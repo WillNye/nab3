@@ -25,13 +25,17 @@ class ClientHandler:
 
 
 class BaseAWS:
-    client: ClientHandler
+    _client: ClientHandler
     loaded_service_classes = {}
     _service_map = dict(
         asg='ASG',
         launch_configuration='LaunchConfiguration',
         security_group='SecurityGroup'
     )
+
+    @property
+    def client(self):
+        return self._client
 
     def _get_service_class(self, service_name):
         service_class = self._service_map[service_name]
@@ -47,7 +51,7 @@ class BaseAWS:
             dict(class_ref.__dict__)
         )
         self.loaded_service_classes[class_name] = new_class
-        new_class.client = self.client
+        new_class._client = self._client
 
         return new_class
 
@@ -73,6 +77,10 @@ class BaseService(BaseAWS):
 
         for k, v in kwargs.items():
             self._set_attr(k, v)
+
+    @property
+    def client(self):
+        return self._client.get(self.boto3_service_name)
 
     def _recursive_normalizer(self, obj):
         """Recursively normalizes an object.
@@ -213,7 +221,7 @@ class BaseService(BaseAWS):
         :param search_str: str passed to paginate().search.
         :return: list<cls()>
         """
-        client = cls.client.get(cls.boto3_service_name)
+        client = cls._client.get(cls.boto3_service_name)
         client_name = f"{cls.client_name}s"
         paginator = client.get_paginator(f'describe_{camel_to_snake(client_name)}')
         page_iterator = paginator.paginate(PaginationConfig={'PageSize': 100})

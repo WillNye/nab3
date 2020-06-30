@@ -15,7 +15,7 @@ class SecurityGroup(BaseService):
 
         group_names = [group_name] if group_name else []
         group_ids = [group_id] if group_id else []
-        security_groups = self.client.get(self.boto3_service_name).describe_security_groups(
+        security_groups = self.client.describe_security_groups(
             GroupIds=group_ids,
             GroupNames=group_names
         )['SecurityGroups']
@@ -42,8 +42,7 @@ class LaunchConfiguration(BaseService):
     client_name = 'LaunchConfiguration'
 
     def load(self):
-        client = self.client.get(self.boto3_service_name)
-        launch_config = client.describe_launch_configurations(
+        launch_config = self.client.describe_launch_configurations(
             LaunchConfigurationNames=[self.name],
             MaxRecords=1
         )['LaunchConfigurations']
@@ -67,8 +66,7 @@ class ASG(BaseService):
     client_name = 'AutoScalingGroup'
 
     def load(self):
-        client = self.client.get(self.boto3_service_name)
-        launch_config = client.describe_auto_scaling_groups(
+        launch_config = self.client.describe_auto_scaling_groups(
             AutoScalingGroupNames=[self.name]
         )[f'{self.client_name}s']
         if launch_config:

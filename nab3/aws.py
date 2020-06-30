@@ -7,7 +7,7 @@ class AWS(BaseAWS):
 
     def __init__(self, session: boto3.Session = boto3.Session()):
         client_handler = ClientHandler(session)
-        self.client = client_handler
+        self._client = client_handler
         self._get_service_classs()
 
     def _get_service_classs(self):
