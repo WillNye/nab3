@@ -5,6 +5,7 @@ class SecurityGroup(BaseService):
     boto3_service_name = 'ec2'
     client_name = 'SecurityGroup'
     key_prefix = 'Group'
+    _service_list_map = dict(user_id_group_pairs='security_group')
 
     def load(self):
         group_id = getattr(self, 'id', None)
@@ -66,4 +67,12 @@ class ASG(BaseService):
     client_name = 'AutoScalingGroup'
 
     def load(self):
-        pass
+        client = self.client.get(self.boto3_service_name)
+        launch_config = client.describe_auto_scaling_groups(
+            AutoScalingGroupNames=[self.name]
+        )[f'{self.client_name}s']
+        if launch_config:
+            for k, v in launch_config[0].items():
+                self._set_attr(k, v)
+
+        return self
