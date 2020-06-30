@@ -100,9 +100,12 @@ class BaseService(BaseAWS):
                 svc_list_alias = self._service_list_map.get(obj_key)
                 if svc_list_alias:
                     new_class = self._get_service_class(svc_list_alias)
-                    obj_val = [new_class(**svc_instance) for svc_instance in obj_val]
-                    new[obj_key] = obj_val
-                    continue
+                    if not any(isinstance(svc_instance, new_class) for svc_instance in obj_val):
+                        # Prevents logic errors in recursive call
+                        obj_val = [new_class(**svc_instance) for svc_instance in obj_val]
+                        new[obj_key] = obj_val
+                    else:
+                        return obj
 
                 for svc_name in self._service_map.keys():
                     if obj_key.startswith(svc_name):
