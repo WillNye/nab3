@@ -1,3 +1,5 @@
+from itertools import chain
+
 from nab3.base import BaseService
 from nab3.utils import paginated_search
 
@@ -83,6 +85,35 @@ class ASG(BaseService):
         )[f'{self.client_name}s']
         if response:
             for k, v in response[0].items():
+                self._set_attr(k, v)
+
+        return self
+
+
+class EC2Instance(BaseService):
+    boto3_service_name = 'ec2'
+    client_name = 'Instance'
+
+    @classmethod
+    def list(cls, instance_ids=[], filters=[]) -> list:
+        """
+        boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_instances
+
+        :param instance_ids: list<str>
+        :param filters: list<dict> Available filter options available in the boto3 link above
+        :return:
+        """
+        search_fnc = cls._client.get(cls.boto3_service_name).describe_instances
+        search_kwargs = dict(Filters=filters, InstanceIds=instance_ids)
+        results = paginated_search(search_fnc, search_kwargs, 'Reservations')
+        instances = list(chain.from_iterable([obj['Instances']] for obj in results))
+        return [cls(**result) for result in instances]
+
+    def load(self):
+        response = self.client.describe_instances(InstanceIds=[self.id])
+        response = response.get('Reservations', [])
+        if response:
+            for k, v in response[0].get('Instances', {})[0].items():
                 self._set_attr(k, v)
 
         return self

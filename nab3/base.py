@@ -30,9 +30,10 @@ class BaseAWS:
     _service_map = dict(
         alarm='Alarm',
         asg='ASG',
-        scaling_policy='AutoScalePolicy',
+        instance='EC2Instance',
         launch_configuration='LaunchConfiguration',
-        security_group='SecurityGroup'
+        scaling_policy='AutoScalePolicy',
+        security_group='SecurityGroup',
     )
 
     @property
