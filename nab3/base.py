@@ -128,27 +128,26 @@ class BaseService(BaseAWS):
                             break
 
                         orig_key = str(obj_key)
-                        obj_key = svc_name
                         if isinstance(obj_val, list):
                             if all(isinstance(svc_instance, dict) for svc_instance in obj_val):
-                                if obj_key[-1] != 's':
-                                    obj_key = f'{obj_key}s'
                                 obj_val = [new_class(**svc_instance) for svc_instance in obj_val]
                             else:
                                 # Sketchy logic incoming
                                 # If the name doesn't include the key, use id as the key.
                                 # e.g. LoadBalancerNames -> name is the key
                                 #       SecurityGroups -> id is the key
-                                if orig_key == f'{obj_key}s':
+                                if orig_key == f'{svc_name}s':
                                     cls_key = 'id'
                                 else:
                                     # extract the key
+                                    obj_key = svc_name
                                     cls_key = orig_key.replace(svc_name, "")
                                     cls_key = cls_key[1:] if cls_key.startswith("_") else cls_key
                                     cls_key = cls_key[:-1] if cls_key.endswith("s") else cls_key
                                 obj_val = [new_class(**{cls_key: svc_val}) for svc_val in obj_val]
                         elif not isinstance(obj_val, new_class):
                             # extract the key
+                            obj_key = svc_name
                             cls_key = orig_key.replace(f"{svc_name}_", "").replace(svc_name, "")
                             obj_val = new_class(**{cls_key: obj_val})
 
