@@ -10,7 +10,7 @@ def camel_to_kebab(str_obj):
 
 
 def paginated_search(search_fnc, search_kwargs, response_key, max_results=None):
-    """
+    """Retrieve and aggregate each paged response, returning a single list of each response object
     :param search_fnc:
     :param search_kwargs:
     :param response_key:

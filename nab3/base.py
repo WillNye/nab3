@@ -28,7 +28,9 @@ class BaseAWS:
     _client: ClientHandler
     loaded_service_classes = {}
     _service_map = dict(
+        alarm='Alarm',
         asg='ASG',
+        scaling_policy='AutoScalePolicy',
         launch_configuration='LaunchConfiguration',
         security_group='SecurityGroup'
     )
@@ -104,30 +106,33 @@ class BaseService(BaseAWS):
             new = obj.__class__()
             for obj_key, obj_val in obj.items():
                 obj_key = camel_to_snake(obj_key)
-
+                update_new = True
                 svc_list_alias = self._service_list_map.get(obj_key)
                 if svc_list_alias:
                     new_class = self._get_service_class(svc_list_alias)
                     if not any(isinstance(svc_instance, new_class) for svc_instance in obj_val):
                         # Prevents logic errors in recursive call
                         obj_val = [new_class(**svc_instance) for svc_instance in obj_val]
-                        new[obj_key] = obj_val
-                    else:
-                        return obj
+                    new[obj_key] = obj_val
+                    continue
 
                 for svc_name in self._service_map.keys():
                     if obj_key.startswith(svc_name):
+                        update_new = False
                         new_class = self._get_service_class(svc_name)
                         if isinstance(obj_val, new_class) or \
                                 (isinstance(obj_val, list)
                                  and any(isinstance(svc_instance, new_class) for svc_instance in obj_val)):
                             # Prevents logic errors in recursive call
+                            new[obj_key] = obj_val
                             break
 
                         orig_key = str(obj_key)
                         obj_key = svc_name
                         if isinstance(obj_val, list):
                             if all(isinstance(svc_instance, dict) for svc_instance in obj_val):
+                                if obj_key[-1] != 's':
+                                    obj_key = f'{obj_key}s'
                                 obj_val = [new_class(**svc_instance) for svc_instance in obj_val]
                             else:
                                 # Sketchy logic incoming
@@ -141,16 +146,17 @@ class BaseService(BaseAWS):
                                     cls_key = orig_key.replace(svc_name, "")
                                     cls_key = cls_key[1:] if cls_key.startswith("_") else cls_key
                                     cls_key = cls_key[:-1] if cls_key.endswith("s") else cls_key
-
-                                obj_key = f'{obj_key}s'
                                 obj_val = [new_class(**{cls_key: svc_val}) for svc_val in obj_val]
                         elif not isinstance(obj_val, new_class):
                             # extract the key
                             cls_key = orig_key.replace(f"{svc_name}_", "").replace(svc_name, "")
                             obj_val = new_class(**{cls_key: obj_val})
+
+                        new[obj_key] = obj_val
                         break
 
-                new[camel_to_snake(obj_key)] = self._recursive_normalizer(obj_val)
+                if update_new:
+                    new[camel_to_snake(obj_key)] = self._recursive_normalizer(obj_val)
 
         elif isinstance(obj, (list, set, tuple)):
             new = obj.__class__(self._recursive_normalizer(v) for v in obj)
@@ -214,19 +220,20 @@ class BaseService(BaseAWS):
         return obj
 
     @classmethod
-    def list(cls, search_str: str = "") -> list:
+    def list(cls, search_fnc: str = None, search_str: str = "") -> list:
         """Returns an instance for each object
         JMESPath for filtering: https://jmespath.org
 
         :param search_str: str passed to paginate().search.
+        :param search_fnc: The client call to be ran
         :return: list<cls()>
         """
         client = cls._client.get(cls.boto3_service_name)
         client_name = f"{cls.client_name}s"
-        paginator = client.get_paginator(f'describe_{camel_to_snake(client_name)}')
+        search_fnc = search_fnc if search_fnc else f'describe_{camel_to_snake(client_name)}'
+        paginator = client.get_paginator(search_fnc)
         page_iterator = paginator.paginate(PaginationConfig={'PageSize': 100})
-        query = f'{client_name}[]' if not search_str else f"{client_name}[] | {search_str}"
-        filtered_asgs = page_iterator.search(query)
-
-        resp = [cls(**asg) for asg in filtered_asgs]
+        query = f'{client_name}[]' if not search_str else search_str
+        filtered_response = page_iterator.search(query)
+        resp = [cls(**result) for result in filtered_response]
         return resp
