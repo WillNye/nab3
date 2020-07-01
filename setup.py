@@ -9,6 +9,7 @@ setup(
     python_requires='>=3.7',
     install_requires=[
         'boto3<2.0.0',
+        'double-click<1.0.0',
     ],
     packages=find_namespace_packages(include=['nab3', 'nab3.*']),
     package_data={'': ['*.md']},
