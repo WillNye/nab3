@@ -106,7 +106,6 @@ class BaseService(BaseAWS):
             new = obj.__class__()
             for obj_key, obj_val in obj.items():
                 obj_key = camel_to_snake(obj_key)
-                update_new = True
                 svc_list_alias = self._service_list_map.get(obj_key)
                 if svc_list_alias:
                     new_class = self._get_service_class(svc_list_alias)
@@ -118,7 +117,6 @@ class BaseService(BaseAWS):
 
                 for svc_name in self._service_map.keys():
                     if obj_key.startswith(svc_name):
-                        update_new = False
                         new_class = self._get_service_class(svc_name)
                         if isinstance(obj_val, new_class) or \
                                 (isinstance(obj_val, list)
@@ -150,12 +148,9 @@ class BaseService(BaseAWS):
                             obj_key = svc_name
                             cls_key = orig_key.replace(f"{svc_name}_", "").replace(svc_name, "")
                             obj_val = new_class(**{cls_key: obj_val})
-
-                        new[obj_key] = obj_val
                         break
 
-                if update_new:
-                    new[camel_to_snake(obj_key)] = self._recursive_normalizer(obj_val)
+                new[obj_key] = self._recursive_normalizer(obj_val)
 
         elif isinstance(obj, (list, set, tuple)):
             new = obj.__class__(self._recursive_normalizer(v) for v in obj)
