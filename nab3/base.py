@@ -32,6 +32,7 @@ class BaseAWS:
         asg='ASG',
         ecs_cluster='ECSCluster',
         ecs_instance='ECSInstance',
+        ecs_service='ECSService',
         instance='EC2Instance',
         launch_configuration='LaunchConfiguration',
         scaling_policy='AutoScalePolicy',
@@ -73,6 +74,7 @@ class BaseService(BaseAWS):
         example: describe_security_groups contains UserIdGroupPairs
             Each element is essentially a security group with some extra metadata
     """
+    _loaded = False
     _service_list_map = {}
 
     def __init__(self, **kwargs):
@@ -86,6 +88,10 @@ class BaseService(BaseAWS):
     @property
     def client(self):
         return self._client.get(self.boto3_service_name)
+
+    @property
+    def loaded(self):
+        return self._loaded
 
     def _recursive_normalizer(self, obj):
         """Recursively normalizes an object.
@@ -182,7 +188,10 @@ class BaseService(BaseAWS):
 
         self.__setattr__(attr_key, attr_val)
 
-    def load(self):
+    def _load(self):
+        raise NotImplementedError
+
+    def load(self, **kwargs):
         """Hits the client to retrieve the entirety of the object.
 
         Used for returning loading the rest of an object that is generated as part of another object's response.
@@ -201,7 +210,11 @@ class BaseService(BaseAWS):
 
         :return:
         """
-        raise NotImplementedError
+        if not self.loaded:
+            self._loaded = True
+            return self._load()
+        else:
+            return self
 
     @classmethod
     def get(cls, name):
@@ -232,5 +245,5 @@ class BaseService(BaseAWS):
         page_iterator = paginator.paginate(PaginationConfig={'PageSize': 100})
         query = f'{client_id}[]' if not search_str else search_str
         filtered_response = page_iterator.search(query)
-        resp = [cls(**result) for result in filtered_response]
+        resp = [cls(_loaded=True, **result) for result in filtered_response]
         return resp
