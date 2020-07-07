@@ -249,6 +249,21 @@ class ASG(BaseService):
 
         return self
 
+    @classmethod
+    def list(cls, loop=asyncio.get_event_loop(), **kwargs):
+        """
+        For list of accepted kwarg values:
+        https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.list_tasks
+            Both snake case as well as the exact key are accepted
+        :param cluster_name:
+        :param loop: Optionally pass an event loop
+        :param kwargs:
+        :return:
+        """
+        client = cls._client.get(cls.boto3_service_name)
+        response = paginated_search(client.describe_auto_scaling_groups, kwargs, f"{cls.client_id}s")
+        return [cls(_loaded=True, **obj) for obj in response]
+
 
 class ECSTask(BaseService):
     boto3_service_name = 'ecs'
@@ -285,19 +300,8 @@ class ECSTask(BaseService):
         :param kwargs:
         :return:
         """
-        client = cls._client.get(cls.boto3_service_name)
-        id_key = f'{cls.client_id}s'
         kwargs['cluster'] = cluster_name
-        search_kwargs = {snake_to_camelback(k): v for k, v in kwargs.items()}
-        search_fnc = client.list_tasks
-        results = paginated_search(search_fnc, search_kwargs, f'{cls.client_id}Arns')
-        loaded_results = async_describe(client.describe_tasks,
-                                        id_key=id_key,
-                                        id_list=results,
-                                        search_kwargs=dict(cluster=cluster_name))
-
-        response = list(chain.from_iterable([lr.get(id_key) for lr in loaded_results]))
-        return [cls(_loaded=True, **obj) for obj in response]
+        return cls._list(describe_kwargs=dict(cluster=cluster_name), loop=loop, **kwargs)
 
 
 class ECSService(AppService):
@@ -317,6 +321,11 @@ class ECSService(AppService):
 
     @property
     def resource_id(self):
+        cluster = getattr(self, 'cluster', None)
+        if cluster is None:
+            cluster = self.cluster_arn.split('/')[-1]
+            self.cluster = cluster
+
         return f"{self.client_id}/{self.cluster}/{self.name}"
 
     @classmethod
@@ -329,11 +338,18 @@ class ECSService(AppService):
         return cls(name=name, cluster=cluster_name).load()
 
     @classmethod
-    def list(cls, cluster_name):
-        search_kwargs = dict(cluster=cluster_name)
-        search_fnc = cls._client.get(cls.boto3_service_name).list_services
-        results = paginated_search(search_fnc, search_kwargs, 'serviceArns')
-        return [cls(name=result.split('/')[-1], cluster=cluster_name).load() for result in results]
+    def list(cls, cluster_name, loop=asyncio.get_event_loop(), **kwargs):
+        """
+        For list of accepted kwarg values:
+        https://docs.aws.amazon.com/AmazonECS/latest/developerguide/cluster-query-language.html
+            Both snake case as well as the exact key are accepted
+        :param cluster_name:
+        :param loop: Optionally pass an event loop
+        :param kwargs:
+        :return:
+        """
+        kwargs['cluster'] = cluster_name
+        return cls._list(describe_kwargs=dict(cluster=cluster_name), loop=loop, **kwargs)
 
 
 class ECSInstance(BaseService):
@@ -361,11 +377,18 @@ class ECSInstance(BaseService):
         return cls(id=id, cluster=cluster_name).load()
 
     @classmethod
-    def list(cls, cluster_name):
-        search_kwargs = dict(cluster=cluster_name)
-        search_fnc = cls._client.get(cls.boto3_service_name).list_container_instances
-        results = paginated_search(search_fnc, search_kwargs, 'containerInstanceArns')
-        return [cls(id=result.split('/')[-1], cluster=cluster_name).load() for result in results]
+    def list(cls, cluster_name, loop=asyncio.get_event_loop(), **kwargs):
+        """
+        For list of accepted kwarg values:
+        https://docs.aws.amazon.com/AmazonECS/latest/developerguide/cluster-query-language.html
+            Both snake case as well as the exact key are accepted
+        :param cluster_name:
+        :param loop: Optionally pass an event loop
+        :param kwargs:
+        :return:
+        """
+        kwargs['cluster'] = cluster_name
+        return cls._list(describe_kwargs=dict(cluster=cluster_name), loop=loop, **kwargs)
 
 
 class ECSCluster(BaseService):
