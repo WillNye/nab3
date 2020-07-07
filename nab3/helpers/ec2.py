@@ -1,7 +1,5 @@
-from datetime import datetime as dt, timedelta
-
 from double_click import echo
-from double_click.markdown import generate_md_bullet_str, generate_md_table_str
+from double_click.markdown import generate_md_table_str
 from tqdm import tqdm
 
 
@@ -26,7 +24,7 @@ def display_asg_sgs(asg_object):
                     user_group.name, 'Egress', ip_perm["from_port"], ip_perm["to_port"], ip_perm["ip_protocol"]
                 ])
 
-    echo(f"# {asg_object.name} Security Groups\n{generate_md_table_str(row_list=rows, headers=headers)}")
+    echo(f"## {asg_object.name} Security Groups\n{generate_md_table_str(row_list=rows, headers=headers)}")
 
 
 def display_asg_ips(asg_object):
