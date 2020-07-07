@@ -35,7 +35,7 @@ def paginated_search(search_fnc, search_kwargs, response_key, max_results=None):
             return results
 
 
-def async_describe(search_fnc, id_key, id_list, search_kwargs, chunk_size=50, loop=asyncio.get_event_loop()):
+def async_describe(search_fnc, id_key, id_list, search_kwargs, chunk_size=5, loop=asyncio.get_event_loop()):
     async def describe(chunked_requests):
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             futures = [

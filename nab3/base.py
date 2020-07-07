@@ -1,10 +1,12 @@
+import asyncio
 import copy
 import sys
+from itertools import chain
 
 import boto3
 import botocore
 
-from nab3.utils import camel_to_snake
+from nab3.utils import async_describe, camel_to_snake, paginated_search, snake_to_camelback
 
 
 class ClientHandler:
@@ -236,20 +238,51 @@ class BaseService(BaseAWS):
         return obj
 
     @classmethod
-    def list(cls, search_fnc: str = None, search_str: str = "") -> list:
+    def _list(cls,
+              list_fnc=None,
+              describe_fnc=None,
+              list_key: str = None,
+              describe_key: str = None,
+              describe_kwargs: dict = {},
+              loop=asyncio.get_event_loop(),
+              **kwargs) -> list:
         """Returns an instance for each object
         JMESPath for filtering: https://jmespath.org
 
-        :param search_str: str passed to paginate().search.
-        :param search_fnc: The client call to be ran
+        :param loop: Optionally pass an event loop
+        :param kwargs:
         :return: list<cls()>
         """
-        client = cls._client.get(cls.boto3_service_name)
-        client_id = f"{cls.client_id}s"
-        search_fnc = search_fnc if search_fnc else f'describe_{camel_to_snake(client_id)}'
-        paginator = client.get_paginator(search_fnc)
-        page_iterator = paginator.paginate(PaginationConfig={'PageSize': 100})
-        query = f'{client_id}[]' if not search_str else search_str
-        filtered_response = page_iterator.search(query)
-        resp = [cls(_loaded=True, **result) for result in filtered_response]
-        return resp
+        if list_fnc is None or describe_fnc is None:
+            fnc_base = camel_to_snake(cls.client_id)
+            client = cls._client.get(cls.boto3_service_name)
+
+            if list_fnc is None:
+                list_fnc = getattr(client, f'list_{fnc_base}s')
+            if describe_fnc is None:
+                describe_fnc = getattr(client, f'describe_{fnc_base}s')
+
+        list_key = list_key if list_key else f'{cls.client_id}Arns'
+        describe_key = describe_key if describe_key else f'{cls.client_id}s'
+        describe_kwargs = {snake_to_camelback(k): v for k, v in describe_kwargs.items()}
+        search_kwargs = {snake_to_camelback(k): v for k, v in kwargs.items()}
+        results = paginated_search(list_fnc, search_kwargs, list_key)
+        loaded_results = async_describe(describe_fnc,
+                                        id_key=describe_key,
+                                        id_list=results,
+                                        loop=loop,
+                                        search_kwargs=describe_kwargs,
+                                        chunk_size=describe_kwargs.pop('chunk_size', 5))
+        response = list(chain.from_iterable([lr.get(describe_key) for lr in loaded_results]))
+        return [cls(_loaded=True, **obj) for obj in response]
+
+    @classmethod
+    def list(cls, loop=asyncio.get_event_loop(), **kwargs) -> list:
+        """Returns an instance for each object
+        JMESPath for filtering: https://jmespath.org
+
+        :param loop: Optionally pass an event loop
+        :param kwargs:
+        :return: list<cls()>
+        """
+        return cls._list(loop, **kwargs)
