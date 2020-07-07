@@ -1,7 +1,8 @@
+import asyncio
 from itertools import chain
 
 from nab3.base import BaseService
-from nab3.utils import paginated_search
+from nab3.utils import async_describe, paginated_search, snake_to_camelback
 
 
 class Alarm(BaseService):
@@ -274,11 +275,29 @@ class ECSTask(BaseService):
         return cls(id=id, cluster=cluster_name).load()
 
     @classmethod
-    def list(cls, cluster_name):
-        search_kwargs = dict(cluster=cluster_name)
-        search_fnc = cls._client.get(cls.boto3_service_name).describe_tasks
-        results = paginated_search(search_fnc, search_kwargs, 'tasks')
-        return [cls(_loaded=True, **result) for result in results]
+    def list(cls, cluster_name, loop=asyncio.get_event_loop(), **kwargs):
+        """
+        For list of accepted kwarg values:
+        https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.list_tasks
+            Both snake case as well as the exact key are accepted
+        :param cluster_name:
+        :param loop: Optionally pass an event loop
+        :param kwargs:
+        :return:
+        """
+        client = cls._client.get(cls.boto3_service_name)
+        id_key = f'{cls.client_id}s'
+        kwargs['cluster'] = cluster_name
+        search_kwargs = {snake_to_camelback(k): v for k, v in kwargs.items()}
+        search_fnc = client.list_tasks
+        results = paginated_search(search_fnc, search_kwargs, f'{cls.client_id}Arns')
+        loaded_results = async_describe(client.describe_tasks,
+                                        id_key=id_key,
+                                        id_list=results,
+                                        search_kwargs=dict(cluster=cluster_name))
+
+        response = list(chain.from_iterable([lr.get(id_key) for lr in loaded_results]))
+        return [cls(_loaded=True, **obj) for obj in response]
 
 
 class ECSService(AppService):

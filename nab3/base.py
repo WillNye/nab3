@@ -1,13 +1,17 @@
+import copy
 import sys
 
 import boto3
+import botocore
 
 from nab3.utils import camel_to_snake
 
 
 class ClientHandler:
 
-    def __init__(self, session: boto3.Session = boto3.Session()):
+    def __init__(self, session: boto3.Session = boto3.Session(),
+                 default_config: botocore.client.Config = botocore.client.Config(max_pool_connections=10)):
+        self._botocore_config = default_config
         self._session = session
 
     def get(self, service_name):
@@ -19,7 +23,7 @@ class ClientHandler:
         """
         service = getattr(self, service_name, None)
         if not service:
-            service = self._session.client(service_name)
+            service = self._session.client(service_name, config=copy.deepcopy(self._botocore_config))
             setattr(self, service_name, service)
         return service
 
@@ -34,6 +38,7 @@ class BaseAWS:
         ecs_cluster='ECSCluster',
         ecs_instance='ECSInstance',
         ecs_service='ECSService',
+        ecs_task='ECSTask',
         instance='EC2Instance',
         launch_configuration='LaunchConfiguration',
         scaling_policy='AutoScalePolicy',
