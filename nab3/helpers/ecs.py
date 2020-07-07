@@ -51,6 +51,9 @@ def md_ecs_cluster_summary(ecs_cluster, display_alerts=True, display_service_eve
 
     md_output = f"# {ecs_cluster.name}\n{generate_md_bullet_str(bullets)}"
 
+    if display_alerts:
+        md_output += md_alerts(ecs_cluster, include_name=False)
+
     for service in ecs_cluster.services:
         md_output += f"#{md_ecs_service_summary(service, display_alerts, display_service_events)}"
 

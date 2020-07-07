@@ -121,7 +121,7 @@ class AppAutoScalePolicy(BaseService):
 
 
 class AppService(BaseService):
-    _auto_scale_policies = None
+    _auto_scale_policies: list = None
 
     @property
     def resource_id(self):
@@ -132,6 +132,19 @@ class AppService(BaseService):
         if self._auto_scale_policies is None:
             asp = self._get_service_class('app_scaling_policy')
             asp_list = asp.list(service_namespace=self.boto3_service_name, resource_id=self.resource_id)
+            self._auto_scale_policies = asp_list
+
+        return self._auto_scale_policies
+
+
+class AutoScaleService(BaseService):
+    _auto_scale_policies: list = None
+
+    @property
+    def scaling_policies(self):
+        if self._auto_scale_policies is None:
+            asp = self._get_service_class('scaling_policy')
+            asp_list = asp.list(self.name)
             self._auto_scale_policies = asp_list
 
         return self._auto_scale_policies
@@ -226,18 +239,9 @@ class EC2Instance(BaseService):
         return self
 
 
-class ASG(BaseService):
+class ASG(AutoScaleService):
     boto3_service_name = 'autoscaling'
     client_id = 'AutoScalingGroup'
-    _auto_scale_policies = None
-
-    @property
-    def scaling_policies(self):
-        if self._auto_scale_policies is None:
-            asp = self._get_service_class('scaling_policy')
-            asp_list = asp.list(asg_name=self.name)
-            self._auto_scale_policies = asp_list
-        return self._auto_scale_policies
 
     def _load(self):
         response = self.client.describe_auto_scaling_groups(
@@ -391,7 +395,7 @@ class ECSInstance(BaseService):
         return cls._list(describe_kwargs=dict(cluster=cluster_name), loop=loop, **kwargs)
 
 
-class ECSCluster(BaseService):
+class ECSCluster(AutoScaleService):
     boto3_service_name = 'ecs'
     client_id = 'Cluster'
     _instances = None
