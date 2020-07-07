@@ -29,6 +29,7 @@ class BaseAWS:
     loaded_service_classes = {}
     _service_map = dict(
         alarm='Alarm',
+        app_scaling_policy='AppAutoScalePolicy',
         asg='ASG',
         ecs_cluster='ECSCluster',
         ecs_instance='ECSInstance',
@@ -188,7 +189,7 @@ class BaseService(BaseAWS):
 
         self.__setattr__(attr_key, attr_val)
 
-    def _load(self):
+    def _load(self, **kwargs):
         raise NotImplementedError
 
     def load(self, **kwargs):
@@ -212,7 +213,7 @@ class BaseService(BaseAWS):
         """
         if not self.loaded:
             self._loaded = True
-            return self._load()
+            return self._load(**kwargs)
         else:
             return self
 
