@@ -30,6 +30,8 @@ class BaseAWS:
     _service_map = dict(
         alarm='Alarm',
         asg='ASG',
+        ecs_cluster='ECSCluster',
+        ecs_instance='ECSInstance',
         instance='EC2Instance',
         launch_configuration='LaunchConfiguration',
         scaling_policy='AutoScalePolicy',
@@ -64,7 +66,7 @@ class BaseService(BaseAWS):
     https://boto3.amazonaws.com/v1/documentation/api/latest/index.html
     """
     boto3_service_name: str
-    client_name: str
+    client_id: str
     key_prefix: str
     """_service_list_map maps each element in the list to a service class.
     This is an effort to ensure proper mapping on nested objects.
@@ -76,7 +78,7 @@ class BaseService(BaseAWS):
     def __init__(self, **kwargs):
         key_prefix = getattr(self, 'key_prefix', None)
         if not key_prefix:
-            self.key_prefix = self.client_name
+            self.key_prefix = self.client_id
 
         for k, v in kwargs.items():
             self._set_attr(k, v)
@@ -224,11 +226,11 @@ class BaseService(BaseAWS):
         :return: list<cls()>
         """
         client = cls._client.get(cls.boto3_service_name)
-        client_name = f"{cls.client_name}s"
-        search_fnc = search_fnc if search_fnc else f'describe_{camel_to_snake(client_name)}'
+        client_id = f"{cls.client_id}s"
+        search_fnc = search_fnc if search_fnc else f'describe_{camel_to_snake(client_id)}'
         paginator = client.get_paginator(search_fnc)
         page_iterator = paginator.paginate(PaginationConfig={'PageSize': 100})
-        query = f'{client_name}[]' if not search_str else search_str
+        query = f'{client_id}[]' if not search_str else search_str
         filtered_response = page_iterator.search(query)
         resp = [cls(**result) for result in filtered_response]
         return resp

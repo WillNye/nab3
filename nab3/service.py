@@ -6,7 +6,7 @@ from nab3.utils import paginated_search
 
 class SecurityGroup(BaseService):
     boto3_service_name = 'ec2'
-    client_name = 'SecurityGroup'
+    client_id = 'SecurityGroup'
     key_prefix = 'Group'
     _service_list_map = dict(user_id_group_pairs='security_group')
 
@@ -21,7 +21,7 @@ class SecurityGroup(BaseService):
         response = self.client.describe_security_groups(
             GroupIds=group_ids,
             GroupNames=group_names
-        )[f'{self.client_name}s']
+        )[f'{self.client_id}s']
         if response:
             for k, v in response[0].items():
                 self._set_attr(k, v)
@@ -42,13 +42,13 @@ class SecurityGroup(BaseService):
 
 class LaunchConfiguration(BaseService):
     boto3_service_name = 'autoscaling'
-    client_name = 'LaunchConfiguration'
+    client_id = 'LaunchConfiguration'
 
     def load(self):
         response = self.client.describe_launch_configurations(
             LaunchConfigurationNames=[self.name],
             MaxRecords=1
-        )[f'{self.client_name}s']
+        )[f'{self.client_id}s']
         if response:
             for k, v in response[0].items():
                 self._set_attr(k, v)
@@ -58,7 +58,7 @@ class LaunchConfiguration(BaseService):
 
 class LoadBalancer(BaseService):
     boto3_service_name = 'elbv2'
-    client_name = 'LoadBalancer'
+    client_id = 'LoadBalancer'
 
     def load(self):
         pass
@@ -66,7 +66,7 @@ class LoadBalancer(BaseService):
 
 class ASG(BaseService):
     boto3_service_name = 'autoscaling'
-    client_name = 'AutoScalingGroup'
+    client_id = 'AutoScalingGroup'
 
     @property
     def scaling_policies(self):
@@ -82,7 +82,7 @@ class ASG(BaseService):
     def load(self):
         response = self.client.describe_auto_scaling_groups(
             AutoScalingGroupNames=[self.name]
-        )[f'{self.client_name}s']
+        )[f'{self.client_id}s']
         if response:
             for k, v in response[0].items():
                 self._set_attr(k, v)
@@ -92,7 +92,7 @@ class ASG(BaseService):
 
 class EC2Instance(BaseService):
     boto3_service_name = 'ec2'
-    client_name = 'Instance'
+    client_id = 'Instance'
 
     @classmethod
     def list(cls, instance_ids=[], filters=[]) -> list:
@@ -121,7 +121,7 @@ class EC2Instance(BaseService):
 
 class Alarm(BaseService):
     boto3_service_name = 'cloudwatch'
-    client_name = 'Alarm'
+    client_id = 'Alarm'
 
     @classmethod
     def get_history(cls, start_date, end_date, name=None, item_type=None, alarm_types=[], sort_descending=True):
@@ -148,7 +148,7 @@ class Alarm(BaseService):
 
 class AutoScalePolicy(BaseService):
     boto3_service_name = 'autoscaling'
-    client_name = 'Policy'
+    client_id = 'Policy'
 
     def get_alerts(self, start_date, end_date, item_type=None, alarm_types=[], sort_desc=True):
         """
@@ -186,3 +186,115 @@ class AutoScalePolicy(BaseService):
 
         search_fnc = cls._client.get(cls.boto3_service_name).describe_policies
         return [cls(**result) for result in paginated_search(search_fnc, search_kwargs, 'ScalingPolicies')]
+
+
+class ECSTask(BaseService):
+    boto3_service_name = 'ecs'
+    client_id = 'task'
+
+    def load(self):
+        response = self.client.describe_tasks(
+            cluster=self.cluster,
+            tasks=[self.id]
+        ).get(f'{self.client_id}s')
+        if response:
+            for k, v in response[0].items():
+                self._set_attr(k, v)
+
+        return self
+
+    @classmethod
+    def get(cls, id, cluster_name):
+        """
+        :param cluster_name: string Name of the ECS Cluster the instance belongs to
+        :param id: string The task instance ID
+        :return:
+        """
+        obj = cls(id=id, cluster=cluster_name)
+
+        return obj.load()
+
+    @classmethod
+    def list(cls, cluster_name):
+        search_kwargs = dict(cluster=cluster_name)
+        search_fnc = cls._client.get(cls.boto3_service_name).describe_tasks
+        results = paginated_search(search_fnc, search_kwargs, 'tasks')
+        return [cls(**result) for result in results]
+
+
+class ECSInstance(BaseService):
+    boto3_service_name = 'ecs'
+    client_id = 'containerInstance'
+
+    def load(self):
+        response = self.client.describe_container_instances(
+            cluster=self.cluster,
+            containerInstances=[self.id]
+        ).get(f'{self.client_id}s')
+        if response:
+            for k, v in response[0].items():
+                self._set_attr(k, v)
+
+        return self
+
+    @classmethod
+    def get(cls, id, cluster_name):
+        """
+        :param cluster_name: string Name of the ECS Cluster the instance belongs to
+        :param id: string The Container instance ID
+        :return:
+        """
+        obj = cls(id=id, cluster=cluster_name)
+
+        return obj.load()
+
+    @classmethod
+    def list(cls, cluster_name):
+        search_kwargs = dict(cluster=cluster_name)
+        search_fnc = cls._client.get(cls.boto3_service_name).list_container_instances
+        results = paginated_search(search_fnc, search_kwargs, 'containerInstanceArns')
+        return [cls(id=result.split('/')[-1], cluster=cluster_name).load() for result in results]
+
+
+class ECSCluster(BaseService):
+    boto3_service_name = 'ecs'
+    client_id = 'Cluster'
+    _instances = None
+
+    def load(self, options=['STATISTICS']):
+        """
+
+        :param options: list<`ATTACHMENTS'|'SETTINGS'|'STATISTICS'|'TAGS'>
+        :return:
+        """
+        response = self.client.describe_clusters(
+            clusters=[self.name],
+            include=options
+        )['clusters']
+        if response:
+            for k, v in response[0].items():
+                self._set_attr(k, v)
+
+        return self
+
+    @property
+    def instances(self):
+        if self._instances is None:
+            instance_obj = self._get_service_class('ecs_instance')
+            self._instances = instance_obj.list(self.name)
+
+        return self._instances
+
+    @classmethod
+    def get(cls, name, options=['STATISTICS']):
+        """Hits the client to set the entirety of the object using the provided lookup field.
+
+        Default filter field is normally name
+
+        :param name:
+        :param options: list<`ATTACHMENTS'|'SETTINGS'|'STATISTICS'|'TAGS'>
+        :return:
+        """
+        obj = cls(name=name)
+        obj.load(options=options)
+        return obj
