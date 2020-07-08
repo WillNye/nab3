@@ -4,19 +4,23 @@ import re
 from functools import partial
 
 
-def camel_to_snake(str_obj):
+def camel_to_snake(str_obj) -> str:
     return re.sub('([a-z0-9])([A-Z])', r'\1_\2', str_obj).lower()
 
 
-def camel_to_kebab(str_obj):
+def camel_to_kebab(str_obj) -> str:
     return re.sub('([a-z0-9])([A-Z])', r'\1-\2', str_obj).lower()
 
 
-def snake_to_camelback(str_obj):
+def snake_to_camelback(str_obj) -> str:
     return re.sub(r'_([a-z])', lambda x: x.group(1).upper(), str_obj)
 
 
-def paginated_search(search_fnc, search_kwargs, response_key, max_results=None):
+def snake_to_camelcap(str_obj) -> str:
+    return snake_to_camelback(str_obj).title()
+
+
+def paginated_search(search_fnc, search_kwargs: dict, response_key: str, max_results: int = None) -> list:
     """Retrieve and aggregate each paged response, returning a single list of each response object
     :param search_fnc:
     :param search_kwargs:
@@ -35,7 +39,11 @@ def paginated_search(search_fnc, search_kwargs, response_key, max_results=None):
             return results
 
 
-def async_describe(search_fnc, id_key, id_list, search_kwargs, chunk_size=5, loop=asyncio.get_event_loop()):
+def async_describe(search_fnc,
+                   id_key: str, id_list: list,
+                   search_kwargs: dict,
+                   chunk_size: int = 5,
+                   loop=asyncio.get_event_loop()):
     async def describe(chunked_requests):
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             futures = [
