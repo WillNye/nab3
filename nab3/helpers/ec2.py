@@ -13,11 +13,12 @@ def md_security_group_table(sg_list, id_filter=[]):
                                dict(rule='Egress', permissions=sg.ip_permissions_egress)]:
             for ip_perm in ip_permissions['permissions']:
                 for user_group in ip_perm.get('user_id_group_pairs', []):
-                    if user_group.id == sg.id:
-                        name = f'Internal Rule - {sg.name}'
-                    elif not id_filter or user_group.id in id_filter:
-                        user_group.load()
-                        name = user_group.name
+                    if not id_filter or user_group.id in id_filter:
+                        if user_group.id == sg.id:
+                            name = f'Internal Rule - {sg.name}'
+                        else:
+                            user_group.load()
+                            name = user_group.name
                     else:
                         continue
 
