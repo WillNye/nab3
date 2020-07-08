@@ -43,6 +43,7 @@ class BaseAWS:
         ecs_task='ECSTask',
         instance='EC2Instance',
         launch_configuration='LaunchConfiguration',
+        metric='Metric',
         scaling_policy='AutoScalePolicy',
         security_group='SecurityGroup',
     )

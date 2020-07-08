@@ -1,8 +1,13 @@
 import asyncio
+import logging
 from itertools import chain
+from datetime import datetime as dt, timedelta
 
 from nab3.base import BaseService
-from nab3.utils import async_describe, paginated_search, snake_to_camelback
+from nab3.utils import paginated_search, snake_to_camelcap
+
+LOGGER = logging.getLogger('nab3')
+LOGGER.setLevel(logging.WARNING)
 
 
 class Alarm(BaseService):
@@ -31,6 +36,67 @@ class Alarm(BaseService):
         search_fnc = cls._client.get(cls.boto3_service_name).describe_alarm_history
         results = paginated_search(search_fnc, search_kwargs, 'AlarmHistoryItems')
         return [cls(_loaded=True, **result) for result in results]
+
+
+class Metric(BaseService):
+    boto3_service_name = 'cloudwatch'
+    client_id = 'Metric'
+
+    @classmethod
+    def get_statistics(cls, namespace, metric_name, start_time, end_time, interval_as_seconds, **kwargs):
+        """
+        boto3.amazonaws.com/v1/documentation/api/latest/reference/services/cloudwatch.html#CloudWatch.Client.get_metric_statistics
+        docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/cloudwatch_concepts.html#dimension-combinations
+        Optional params:
+            Dimensions=[
+                {
+                    'Name': 'string',
+                    'Value': 'string'
+                },
+            ],
+            StartTime=datetime(2015, 1, 1),
+            EndTime=datetime(2015, 1, 1),
+            Period=123,
+            (Statistics=[
+                'SampleCount'|'Average'|'Sum'|'Minimum'|'Maximum',
+            ],
+            ExtendedStatistics=[
+                'string',
+            ]) - Statistics or ExtendedStatistics must be set ,
+            Unit='Seconds'|'Microseconds'|'Milliseconds'|'Bytes'|'Kilobytes'|'Megabytes'|'
+        :param namespace:
+        :param metric_name:
+        :param start_time:
+        :param end_time:
+        :param interval_as_seconds: This is the Period paremeter. Renamed here to make the purpose more intuitive
+        :param kwargs:
+        :return:
+        """
+        search_kwargs = dict(EndTime=end_time,
+                             Namespace=namespace,
+                             MetricName=metric_name,
+                             Period=interval_as_seconds,
+                             StartTime=start_time)
+        for k, v in kwargs.items():
+            search_kwargs[snake_to_camelcap(k)] = v
+
+        client = cls._client.get(cls.boto3_service_name)
+        response = client.get_metric_statistics(**search_kwargs)
+        return [cls(_loaded=True, **obj) for obj in response.get('Datapoints', [])]
+
+    @classmethod
+    def get(cls, loop=asyncio.get_event_loop(), **kwargs):
+        raise NotImplementedError("get is not a supported operation for Metric")
+
+    @classmethod
+    def load(cls, **kwargs):
+        raise NotImplementedError("load is not a supported operation for Metric")
+
+    @classmethod
+    def list(cls, **kwargs) -> list:
+        client = cls._client.get(cls.boto3_service_name)
+        response = paginated_search(client.list_metrics, kwargs, f"{cls.client_id}s")
+        return [cls(_loaded=True, **obj) for obj in response]
 
 
 class AutoScalePolicy(BaseService):
@@ -148,6 +214,67 @@ class AutoScaleService(BaseService):
             self._auto_scale_policies = asp_list
 
         return self._auto_scale_policies
+
+
+class MetricService(BaseService):
+    _available_metrics = None
+
+    def get_statistics(self,
+                    metric_name: str,
+                    start_time: dt = dt.utcnow()-timedelta(hours=3),
+                    end_time: dt = dt.utcnow(),
+                    interval_as_seconds: int = 300, **kwargs) -> list:
+        """
+        :param metric_name:
+        :param start_time:
+        :param end_time:
+        :param interval_as_seconds:
+        :param kwargs:
+        :return:
+        """
+        kwargs = {snake_to_camelcap(k): v for k, v in kwargs}
+        dimensions = self._stat_dimensions + kwargs.get('Dimensions', [])
+        kwargs['Dimensions'] = dimensions
+
+        if kwargs.get('ExtendedStatistics') is None and kwargs.get('Statistics') is None:
+            LOGGER.warning('Neither ExtendedStatistics or Statistics was set. Defaulting to Statistics=[Average]')
+            kwargs['Statistics'] = ['Average']
+
+        metric_cls = self._get_service_class('metric')
+        metrics = metric_cls.get_statistics(
+            self._stat_name, metric_name, start_time, end_time, interval_as_seconds, **kwargs
+        )
+        return metrics
+
+    @property
+    def available_metrics(self):
+        if self._available_metrics is None:
+            metrics = self._get_service_class('metric')
+            metrics = metrics.list(Namespace=self._stat_name, Dimensions=self._stat_dimensions)
+            self._available_metrics = metrics
+
+        return self._available_metrics
+
+    @property
+    def metric_options(self):
+        if self._available_metrics is None:
+            metrics = self._get_service_class('metric')
+            metrics = metrics.list(Namespace=self._stat_name, Dimensions=self._stat_dimensions)
+            self._available_metrics = metrics
+
+        return set(metric.name for metric in self._available_metrics)
+
+    @property
+    def _stat_dimensions(self) -> list:
+        raise NotImplementedError
+
+    @property
+    def _stat_name(self) -> str:
+        """
+        docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/aws-services-cloudwatch-metrics.html
+        :return:
+        """
+        raise NotImplementedError
 
 
 class SecurityGroup(BaseService):
@@ -352,9 +479,10 @@ class ECSTask(BaseService):
         return cls._list(describe_kwargs=dict(cluster=cluster_name), loop=loop, **kwargs)
 
 
-class ECSService(AppService):
+class ECSService(AppService, MetricService):
     boto3_service_name = 'ecs'
     client_id = 'service'
+    _cluster = None
 
     def _load(self):
         response = self.client.describe_services(
@@ -368,13 +496,24 @@ class ECSService(AppService):
         return self
 
     @property
-    def resource_id(self):
-        cluster = getattr(self, 'cluster', None)
-        if cluster is None:
-            cluster = self.cluster_arn.split('/')[-1]
-            self.cluster = cluster
+    def cluster(self):
+        if self._cluster is None:
+            self.load()
+            self._cluster = self.cluster_arn.split('/')[-1]
 
+        return self._cluster
+
+    @property
+    def resource_id(self):
         return f"{self.client_id}/{self.cluster}/{self.name}"
+
+    @property
+    def _stat_dimensions(self) -> list:
+        return [dict(Name='ClusterName', Value=self.cluster), dict(Name='ServiceName', Value=self.name)]
+
+    @property
+    def _stat_name(self) -> str:
+        return 'AWS/ECS'
 
     @classmethod
     def get(cls, name, cluster_name):
@@ -439,7 +578,7 @@ class ECSInstance(BaseService):
         return cls._list(describe_kwargs=dict(cluster=cluster_name), loop=loop, **kwargs)
 
 
-class ECSCluster(AutoScaleService):
+class ECSCluster(AutoScaleService, MetricService):
     boto3_service_name = 'ecs'
     client_id = 'Cluster'
     _instances = None
@@ -476,6 +615,14 @@ class ECSCluster(AutoScaleService):
             self._services = instance_obj.list(self.name)
 
         return self._services
+
+    @property
+    def _stat_dimensions(self) -> list:
+        return [dict(Name='ClusterName', Value=self.name)]
+
+    @property
+    def _stat_name(self) -> str:
+        return 'AWS/ECS'
 
     @classmethod
     def get(cls, name, options=['ATTACHMENTS', 'STATISTICS', 'SETTINGS']):
