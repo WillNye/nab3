@@ -1,4 +1,4 @@
-from double_click.markdown import generate_md_table_str
+from double_click.markdown import generate_md_bullet_str, generate_md_table_str
 from tqdm import tqdm
 
 
@@ -26,17 +26,29 @@ def md_security_group_table(sg_list: list, id_filter: list = []):
                         ip_perm.get('from_port', 'None'), ip_perm.get('from_port', 'None'),
                         ip_perm["ip_protocol"]
                     ])
-    rows.sort(reverse=True, key=lambda x: x[0])
-    return generate_md_table_str(row_list=rows, headers=headers)
+
+    if rows:
+        rows.sort(reverse=True, key=lambda x: x[0])
+        return generate_md_table_str(row_list=rows, headers=headers)
 
 
 def md_autoscale_sgs(asg_object):
     asg_object.load()
     security_groups = [sg for sg in asg_object.security_groups if sg.name != 'unix-admin']
-    sg_table = md_security_group_table(security_groups)
+    if not security_groups:
+        return ""
+
     sg_names = [sg.id for sg in security_groups]
+    md_output = f"### Security Groups:\n{generate_md_bullet_str(sg_names)}\n"
+    sg_table = md_security_group_table(security_groups)
     resource_table = md_security_group_table(asg_object.accessible_resources, sg_names)
-    return f"Security Groups\n{sg_table}\nAccessible Resources\n{resource_table}"
+
+    if sg_table:
+        md_output += f"#### Rule Summary\n{sg_table}\n"
+    if resource_table:
+        md_output += f"Accessible Resources\n{resource_table}\n"
+
+    return md_output
 
 
 def md_autoscale_ips(asg_object):
