@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import logging
 from itertools import chain
 from datetime import datetime as dt, timedelta
@@ -349,6 +350,9 @@ class LaunchConfiguration(BaseService):
         if response:
             for k, v in response[0].items():
                 self._set_attr(k, v)
+
+            user_data = getattr(self, 'user_data', "")
+            self.user_data = base64.b64decode(self.user_data).decode("UTF-8") if user_data else user_data
 
         return self
 

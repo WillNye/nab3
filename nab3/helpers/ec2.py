@@ -58,5 +58,5 @@ def md_autoscale_ips(asg_object):
         instance.load()
         rows.append([instance.id, instance.private_ip_address, instance.state['name']])
 
-    return {generate_md_table_str(row_list=rows, headers=headers)}
+    return generate_md_table_str(row_list=rows, headers=headers)
 
