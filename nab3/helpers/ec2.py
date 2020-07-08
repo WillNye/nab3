@@ -1,4 +1,3 @@
-from double_click import echo
 from double_click.markdown import generate_md_table_str
 from tqdm import tqdm
 
@@ -31,21 +30,21 @@ def md_security_group_table(sg_list: list, id_filter: list = []):
     return generate_md_table_str(row_list=rows, headers=headers)
 
 
-def display_asg_sgs(asg_object):
+def md_autoscale_sgs(asg_object):
     asg_object.load()
     security_groups = [sg for sg in asg_object.security_groups if sg.name != 'unix-admin']
     sg_table = md_security_group_table(security_groups)
     sg_names = [sg.id for sg in security_groups]
     resource_table = md_security_group_table(asg_object.accessible_resources, sg_names)
-    echo(f"## {asg_object.name}\nSecurity Groups\n{sg_table}\nAccessible Resources\n{resource_table}")
+    return f"Security Groups\n{sg_table}\nAccessible Resources\n{resource_table}"
 
 
-def display_asg_ips(asg_object):
+def md_autoscale_ips(asg_object):
     headers = ['Instance ID', 'IP', 'State']
     rows = []
     for instance in asg_object.instances:
         instance.load()
         rows.append([instance.id, instance.private_ip_address, instance.state['name']])
 
-    echo(f"# {asg_object.name}\n{generate_md_table_str(row_list=rows, headers=headers)}")
+    return {generate_md_table_str(row_list=rows, headers=headers)}
 

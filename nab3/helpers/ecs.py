@@ -1,4 +1,3 @@
-from double_click import echo
 from double_click.markdown import generate_md_bullet_str, generate_md_table_str
 
 from nab3.helpers.cloud_watch import md_alerts
@@ -56,23 +55,3 @@ def md_ecs_cluster_summary(ecs_cluster, display_alerts=True, display_service_eve
         md_output += f"#{md_ecs_service_summary(service, display_alerts, display_service_events)}"
 
     return md_output
-
-
-def display_ecs_service_summary(ecs_service, display_alerts=True, display_events=True):
-    """
-    :param ecs_service: ECSService object
-    :param display_alerts: bool Default(True) - Display service cloudwatch alarms for the last 30 days
-    :param display_events: bool Default(True) - Display the 50 most recent events of the service
-    :return:
-    """
-    echo(md_ecs_service_summary(ecs_service, display_alerts, display_events))
-
-
-def display_ecs_cluster_summary(ecs_cluster, display_alerts=False, display_service_events=False):
-    """
-    :param ecs_cluster: ECSCluster object
-    :param display_alerts: bool Default(False) - Display cloudwatch alarms for the last 30 days
-    :param display_service_events: bool Default(False) - Display the 50 most recent events of each service
-    :return:
-    """
-    echo(md_ecs_cluster_summary(ecs_cluster, display_alerts, display_service_events))

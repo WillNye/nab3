@@ -1,6 +1,5 @@
 from datetime import datetime as dt, timedelta
 
-from double_click import echo
 from double_click.markdown import generate_md_bullet_str, generate_md_table_str
 from tqdm import tqdm
 
@@ -61,7 +60,3 @@ def md_alerts(scalable_object, start_date=dt.now()-timedelta(days=30), end_date=
 
     rows.sort(reverse=True, key=lambda x: x[2])
     return f"{md_output}{generate_md_bullet_str(policy_summary)}{generate_md_table_str(row_list=rows, headers=headers)}"
-
-
-def display_alerts(scalable_object, start_date=dt.now()-timedelta(days=30), end_date=dt.now()):
-    echo(md_alerts(scalable_object, start_date, end_date))
