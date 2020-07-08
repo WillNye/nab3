@@ -155,6 +155,7 @@ class SecurityGroup(BaseService):
     client_id = 'SecurityGroup'
     key_prefix = 'Group'
     _service_list_map = dict(user_id_group_pairs='security_group')
+    _accessible_sg = None
 
     def _load(self):
         group_id = getattr(self, 'id', None)
@@ -184,6 +185,21 @@ class SecurityGroup(BaseService):
         obj = cls(id=sg_id, name=sg_name)
         obj.load()
         return obj
+
+    @classmethod
+    def list(cls, loop=asyncio.get_event_loop(), **kwargs):
+        """
+        For list of accepted kwarg values:
+        https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.list_tasks
+            Both snake case as well as the exact key are accepted
+        :param cluster_name:
+        :param loop: Optionally pass an event loop
+        :param kwargs:
+        :return:
+        """
+        client = cls._client.get(cls.boto3_service_name)
+        response = paginated_search(client.describe_security_groups, kwargs, f"{cls.client_id}s")
+        return [cls(_loaded=True, **obj) for obj in response]
 
 
 class LaunchConfiguration(BaseService):
@@ -242,6 +258,8 @@ class EC2Instance(BaseService):
 class ASG(AutoScaleService):
     boto3_service_name = 'autoscaling'
     client_id = 'AutoScalingGroup'
+    _security_groups = None
+    _accessible_resources = None
 
     def _load(self):
         response = self.client.describe_auto_scaling_groups(
@@ -252,6 +270,32 @@ class ASG(AutoScaleService):
                 self._set_attr(k, v)
 
         return self
+
+    @property
+    def security_groups(self):
+        if self._security_groups is None:
+            try:
+                l_config = self.launch_configuration.load()
+                self._security_groups = [sg.load() for sg in l_config.security_groups]
+            except AttributeError:
+                self._security_groups = []
+        return self._security_groups
+
+    @property
+    def accessible_resources(self):
+        if self._accessible_resources is None:
+            filter_list = [sg.id for sg in self.security_groups]
+            if not filter_list:
+                self._accessible_resources = []
+                return self._accessible_resources
+
+            instance_obj = self._get_service_class('security_group')
+            self._accessible_resources = instance_obj.list(Filters=[dict(
+                Name='ip-permission.group-id',
+                Values=filter_list
+            )])
+
+        return self._accessible_resources
 
     @classmethod
     def list(cls, loop=asyncio.get_event_loop(), **kwargs):
