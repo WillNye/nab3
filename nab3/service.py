@@ -94,12 +94,20 @@ class Metric(BaseService):
 
     @classmethod
     def list(cls, **kwargs) -> list:
+        """
+        boto3.amazonaws.com/v1/documentation/api/latest/reference/services/cloudwatch.html#CloudWatch.Client.list_metrics
+        :param kwargs:
+        :return:
+        """
         client = cls._client.get(cls.boto3_service_name)
         response = paginated_search(client.list_metrics, kwargs, f"{cls.client_id}s")
         return [cls(_loaded=True, **obj) for obj in response]
 
 
 class AutoScalePolicy(BaseService):
+    """
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/autoscaling.html#AutoScaling.Client.describe_policies
+    """
     boto3_service_name = 'autoscaling'
     client_id = 'Policy'
 
@@ -143,6 +151,9 @@ class AutoScalePolicy(BaseService):
 
 
 class AppAutoScalePolicy(BaseService):
+    """
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/application-autoscaling.html#ApplicationAutoScaling.Client.describe_scaling_policies
+    """
     boto3_service_name = 'application-autoscaling'
     client_id = 'Policy'
 
@@ -278,6 +289,9 @@ class MetricService(BaseService):
 
 
 class SecurityGroup(BaseService):
+    """
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_security_groups
+    """
     boto3_service_name = 'ec2'
     client_id = 'SecurityGroup'
     key_prefix = 'Group'
@@ -314,13 +328,8 @@ class SecurityGroup(BaseService):
         return obj
 
     @classmethod
-    def list(cls, loop=asyncio.get_event_loop(), **kwargs):
+    def list(cls, **kwargs):
         """
-        For list of accepted kwarg values:
-        https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.list_tasks
-            Both snake case as well as the exact key are accepted
-        :param cluster_name:
-        :param loop: Optionally pass an event loop
         :param kwargs:
         :return:
         """
@@ -330,6 +339,9 @@ class SecurityGroup(BaseService):
 
 
 class LaunchConfiguration(BaseService):
+    """
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/autoscaling.html#AutoScaling.Client.describe_launch_configurations
+    """
     boto3_service_name = 'autoscaling'
     client_id = 'LaunchConfiguration'
 
@@ -383,6 +395,9 @@ class EC2Instance(BaseService):
 
 
 class ASG(AutoScaleService):
+    """
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/autoscaling.html#AutoScaling.Client.describe_launch_configurations
+    """
     boto3_service_name = 'autoscaling'
     client_id = 'AutoScalingGroup'
     _security_groups = None
@@ -425,13 +440,8 @@ class ASG(AutoScaleService):
         return self._accessible_resources
 
     @classmethod
-    def list(cls, loop=asyncio.get_event_loop(), **kwargs):
+    def list(cls, **kwargs):
         """
-        For list of accepted kwarg values:
-        https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.list_tasks
-            Both snake case as well as the exact key are accepted
-        :param cluster_name:
-        :param loop: Optionally pass an event loop
         :param kwargs:
         :return:
         """
@@ -586,7 +596,7 @@ class ECSCluster(AutoScaleService, MetricService):
 
     def _load(self):
         """
-
+        boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.describe_clusters
         :param options: list<`ATTACHMENTS'|'SETTINGS'|'STATISTICS'|'TAGS'>
         :return:
         """
@@ -626,10 +636,7 @@ class ECSCluster(AutoScaleService, MetricService):
 
     @classmethod
     def get(cls, name, options=['ATTACHMENTS', 'STATISTICS', 'SETTINGS']):
-        """Hits the client to set the entirety of the object using the provided lookup field.
-
-        Default filter field is normally name
-
+        """
         :param name:
         :param options: list<`ATTACHMENTS'|'SETTINGS'|'STATISTICS'|'TAGS'>
         :return:

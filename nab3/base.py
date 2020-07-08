@@ -10,6 +10,8 @@ from nab3.utils import async_describe, camel_to_snake, paginated_search, snake_t
 
 
 class ClientHandler:
+    """Maintains state of N different boto3 client connections
+    """
 
     def __init__(self, session: boto3.Session = boto3.Session(),
                  default_config: botocore.client.Config = botocore.client.Config(max_pool_connections=10)):

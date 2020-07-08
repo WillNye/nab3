@@ -3,7 +3,7 @@ from double_click.markdown import generate_md_table_str
 from tqdm import tqdm
 
 
-def md_security_group_table(sg_list, id_filter=[]):
+def md_security_group_table(sg_list: list, id_filter: list = []):
     headers = ['Name', 'Rule Type', 'Protocol', 'From', 'To']
     rows = []
     sg_list = sg_list if len(sg_list) < 5 else tqdm(sg_list)
