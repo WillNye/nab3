@@ -3,28 +3,40 @@ from double_click.markdown import generate_md_table_str
 from tqdm import tqdm
 
 
-def display_asg_sgs(asg_object):
+def md_security_group_table(sg_list, id_filter=[]):
     headers = ['Name', 'Rule Type', 'Protocol', 'From', 'To']
     rows = []
-
-    l_config = asg_object.launch_configuration.load()
-    for sg in tqdm(l_config.security_groups):
+    sg_list = sg_list if len(sg_list) < 5 else tqdm(sg_list)
+    for sg in sg_list:
         sg.load()
-        for ip_perm in sg.ip_permissions:
-            for user_group in ip_perm.get('user_id_group_pairs', []):
-                user_group.load()
-                rows.append([
-                    user_group.name, 'Ingress', ip_perm["from_port"], ip_perm["to_port"], ip_perm["ip_protocol"]
-                ])
+        for ip_permissions in [dict(rule='Ingress', permissions=sg.ip_permissions),
+                               dict(rule='Egress', permissions=sg.ip_permissions_egress)]:
+            for ip_perm in ip_permissions['permissions']:
+                for user_group in ip_perm.get('user_id_group_pairs', []):
+                    if user_group.id == sg.id:
+                        name = f'Internal Rule - {sg.name}'
+                    elif not id_filter or user_group.id in id_filter:
+                        user_group.load()
+                        name = user_group.name
+                    else:
+                        continue
 
-        for ip_perm in sg.ip_permissions_egress:
-            for user_group in ip_perm.get('user_id_group_pairs', []):
-                user_group.load()
-                rows.append([
-                    user_group.name, 'Egress', ip_perm["from_port"], ip_perm["to_port"], ip_perm["ip_protocol"]
-                ])
+                    rows.append([
+                        name, ip_permissions['rule'],
+                        ip_perm.get('from_port', 'None'), ip_perm.get('from_port', 'None'),
+                        ip_perm["ip_protocol"]
+                    ])
+    rows.sort(reverse=True, key=lambda x: x[0])
+    return generate_md_table_str(row_list=rows, headers=headers)
 
-    echo(f"## {asg_object.name} Security Groups\n{generate_md_table_str(row_list=rows, headers=headers)}")
+
+def display_asg_sgs(asg_object):
+    asg_object.load()
+    security_groups = [sg for sg in asg_object.security_groups if sg.name != 'unix-admin']
+    sg_table = md_security_group_table(security_groups)
+    sg_names = [sg.id for sg in security_groups]
+    resource_table = md_security_group_table(asg_object.accessible_resources, sg_names)
+    echo(f"## {asg_object.name}\nSecurity Groups\n{sg_table}\nAccessible Resources\n{resource_table}")
 
 
 def display_asg_ips(asg_object):
