@@ -210,7 +210,6 @@ class AppService(BaseService):
             asp = self._get_service_class('app_scaling_policy')
             asp_list = asp.list(service_namespace=self.boto3_service_name, resource_id=self.resource_id)
             self._auto_scale_policies = asp_list
-
         return self._auto_scale_policies
 
 
@@ -223,7 +222,6 @@ class AutoScaleService(BaseService):
             asp = self._get_service_class('scaling_policy')
             asp_list = asp.list(self.name)
             self._auto_scale_policies = asp_list
-
         return self._auto_scale_policies
 
 
@@ -263,7 +261,6 @@ class MetricService(BaseService):
             metrics = self._get_service_class('metric')
             metrics = metrics.list(Namespace=self._stat_name, Dimensions=self._stat_dimensions)
             self._available_metrics = metrics
-
         return self._available_metrics
 
     @property
@@ -272,7 +269,6 @@ class MetricService(BaseService):
             metrics = self._get_service_class('metric')
             metrics = metrics.list(Namespace=self._stat_name, Dimensions=self._stat_dimensions)
             self._available_metrics = metrics
-
         return set(metric.name for metric in self._available_metrics)
 
     @property
@@ -510,7 +506,6 @@ class ECSService(AppService, MetricService):
         if self._cluster is None:
             self.load()
             self._cluster = self.cluster_arn.split('/')[-1]
-
         return self._cluster
 
     @property
@@ -591,6 +586,7 @@ class ECSInstance(BaseService):
 class ECSCluster(AutoScaleService, MetricService):
     boto3_service_name = 'ecs'
     client_id = 'Cluster'
+    _asg = None
     _instances = None
     _services = None
 
@@ -611,11 +607,17 @@ class ECSCluster(AutoScaleService, MetricService):
         return self
 
     @property
+    def asg(self):
+        if self._asg is None:
+            asg_obj = self._get_service_class('asg')
+            self._asg = asg_obj.get(name=self.name)
+        return self._asg
+
+    @property
     def instances(self):
         if self._instances is None:
             instance_obj = self._get_service_class('ecs_instance')
             self._instances = instance_obj.list(self.name)
-
         return self._instances
 
     @property
@@ -623,7 +625,6 @@ class ECSCluster(AutoScaleService, MetricService):
         if self._services is None:
             instance_obj = self._get_service_class('ecs_service')
             self._services = instance_obj.list(self.name)
-
         return self._services
 
     @property

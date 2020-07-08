@@ -228,15 +228,12 @@ class BaseService(BaseAWS):
             return self
 
     @classmethod
-    def get(cls, name):
+    def get(cls, **kwargs):
         """Hits the client to set the entirety of the object using the provided lookup field.
 
-        Default filter field is normally name
-
-        :param name:
         :return:
         """
-        obj = cls(name=name)
+        obj = cls(**kwargs)
         obj.load()
         return obj
 
