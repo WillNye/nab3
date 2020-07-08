@@ -1,7 +1,7 @@
 from double_click import echo
 from double_click.markdown import generate_md_bullet_str, generate_md_table_str
 
-from nab3.helpers.alerts import md_alerts
+from nab3.helpers.cloud_watch import md_alerts
 
 
 def md_ecs_service_summary(ecs_service, display_alerts=True, display_events=True) -> str:

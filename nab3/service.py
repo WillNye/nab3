@@ -243,7 +243,7 @@ class MetricService(BaseService):
         :param kwargs:
         :return:
         """
-        kwargs = {snake_to_camelcap(k): v for k, v in kwargs}
+        kwargs = {snake_to_camelcap(k): v for k, v in kwargs.items()}
         dimensions = self._stat_dimensions + kwargs.get('Dimensions', [])
         kwargs['Dimensions'] = dimensions
 
