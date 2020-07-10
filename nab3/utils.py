@@ -4,7 +4,7 @@ import copy
 import inspect
 import logging
 import re
-from functools import partial
+from itertools import chain
 
 LOGGER = logging.getLogger('nab3')
 LOGGER.setLevel(logging.WARNING)
@@ -45,29 +45,16 @@ def paginated_search(search_fnc, search_kwargs: dict, response_key: str, max_res
             return results
 
 
-def async_describe(search_fnc,
-                   id_key: str, id_list: list,
-                   search_kwargs: dict,
-                   chunk_size: int = 5,
-                   loop=asyncio.get_event_loop()):
-    async def describe(chunked_requests):
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            futures = [
-                loop.run_in_executor(
-                    executor,
-                    partial(
-                        search_fnc,
-                        **{id_key: chunked_request},
-                        **search_kwargs
-                    )
-                ) for chunked_request in chunked_requests]
-
-            return [await f for f in asyncio.as_completed(futures)]
+async def describe(search_fnc, id_key: str, id_list: list, search_kwargs: dict, chunk_size: int = 25):
+    async def _describe(id_val):
+        return search_fnc(**{**{id_key: [id_val]}, **search_kwargs})
 
     if len(id_list) <= chunk_size:
         return [search_fnc(**{**{id_key: id_list}, **search_kwargs})]
 
-    return loop.run_until_complete(describe([id_list[x:x+chunk_size] for x in range(0, len(id_list), chunk_size)]))
+    response = [await asyncio.gather(*[_describe(id_val) for id_val in id_list[x:x+chunk_size]])
+                for x in range(0, len(id_list), chunk_size)]
+    return list(chain.from_iterable(response))
 
 
 class Filter:
@@ -111,7 +98,10 @@ class Filter:
                 elif inspect.isclass(type(service_obj)):
                     try:
                         service_obj.load()
-                        nested_obj = getattr(service_obj, cur_key, None)
+                        if cur_key in service_obj.__dict__:
+                            nested_obj = getattr(service_obj, cur_key, None)
+                        else:
+                            nested_obj = await getattr(service_obj, cur_key, None)
                         response, is_match = await self._match(nested_obj, safe_params, filter_value)
                         if is_match:
                             setattr(service_obj, cur_key, response)
@@ -142,14 +132,11 @@ class Filter:
                 LOGGER.warning(str(e))
                 return service_obj, False
 
-    def run(self, service_objects):
-        async def _run(filtered_services, param_list):
-            return await asyncio.gather(*[
-                self._match(so, param_list, filter_value) for so in filtered_services
-            ])
-
+    async def run(self, service_objects):
         for filter_param, filter_value in self.filter_params.items():
-            hits = asyncio.run(_run(service_objects, filter_param.split('__')))
+            hits = await asyncio.gather(*[
+                self._match(so, filter_param.split('__'), filter_value) for so in service_objects
+            ])
             service_objects = [hit[0] for hit in hits if hit[1]]
         return service_objects
 

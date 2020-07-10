@@ -6,7 +6,7 @@ from itertools import chain
 import boto3
 import botocore
 
-from nab3.utils import async_describe, camel_to_snake, Filter, paginated_search, snake_to_camelback
+from nab3.utils import describe, camel_to_snake, Filter, paginated_search, snake_to_camelback
 
 
 class ClientHandler:
@@ -238,18 +238,15 @@ class BaseService(BaseAWS):
         return obj
 
     @classmethod
-    def _list(cls,
-              list_fnc=None,
-              describe_fnc=None,
-              list_key: str = None,
-              describe_key: str = None,
-              describe_kwargs: dict = {},
-              loop=asyncio.get_event_loop(),
-              **kwargs) -> list:
+    async def _list(cls,
+                    list_fnc=None,
+                    describe_fnc=None,
+                    list_key: str = None,
+                    describe_key: str = None,
+                    describe_kwargs: dict = {},
+                    **kwargs) -> list:
         """Returns an instance for each object
         JMESPath for filtering: https://jmespath.org
-
-        :param loop: Optionally pass an event loop
         :param kwargs:
         :return: list<cls()>
         """
@@ -270,26 +267,24 @@ class BaseService(BaseAWS):
         if not results:
             return results
 
-        loaded_results = async_describe(describe_fnc,
-                                        id_key=describe_key,
-                                        id_list=results,
-                                        loop=loop,
-                                        search_kwargs=describe_kwargs,
-                                        chunk_size=describe_kwargs.pop('chunk_size', 5))
+        chunk_size = describe_kwargs.pop('chunk_size', 25)
+        loaded_results = await describe(
+            describe_fnc, id_key=describe_key, id_list=results, search_kwargs=describe_kwargs, chunk_size=chunk_size
+        )
         response = list(chain.from_iterable([lr.get(describe_key) for lr in loaded_results]))
         return [cls(_loaded=True, **obj) for obj in response]
 
     @classmethod
-    def list(cls, **kwargs) -> list:
+    async def list(cls, **kwargs) -> list:
         """Returns an instance for each object
 
         :param kwargs:
         :return: list<cls()>
         """
-        return cls._list(**kwargs)
+        return await cls._list(**kwargs)
 
     @classmethod
-    def filter(cls, **kwargs) -> list:
+    async def filter(cls, **kwargs) -> list:
         """Returns an instance for each object
 
         :param kwargs:
@@ -298,9 +293,9 @@ class BaseService(BaseAWS):
         filter_operations = [f'__{filter_op}' for filter_op in Filter.get_operations()]
         filter_kwargs = {k: v for k, v in kwargs.items() if any(k.endswith(op) for op in filter_operations)}
         kwargs = {k: v for k, v in kwargs.items() if k not in filter_kwargs.keys()}
-        service_objects = cls.list(**kwargs)
+        service_objects = await cls.list(**kwargs)
         if service_objects and filter_kwargs:
             filter_obj = Filter(**filter_kwargs)
-            return filter_obj.run(service_objects)
+            return await filter_obj.run(service_objects)
         else:
             return service_objects

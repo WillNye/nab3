@@ -86,7 +86,7 @@ class Metric(BaseService):
         return [cls(_loaded=True, **obj) for obj in response.get('Datapoints', [])]
 
     @classmethod
-    def get(cls, loop=asyncio.get_event_loop(), **kwargs):
+    def get(cls, **kwargs):
         raise NotImplementedError("get is not a supported operation for Metric")
 
     @classmethod
@@ -94,7 +94,7 @@ class Metric(BaseService):
         raise NotImplementedError("load is not a supported operation for Metric")
 
     @classmethod
-    def list(cls, **kwargs) -> list:
+    async def list(cls, **kwargs) -> list:
         """
         boto3.amazonaws.com/v1/documentation/api/latest/reference/services/cloudwatch.html#CloudWatch.Client.list_metrics
         :param kwargs:
@@ -141,7 +141,7 @@ class AutoScalePolicy(BaseService):
         return self
 
     @classmethod
-    def list(cls, asg_name=None, policy_names=[], policy_types=[]):
+    async def list(cls, asg_name=None, policy_names=[], policy_types=[]):
         search_kwargs = dict(PolicyNames=policy_names, PolicyTypes=policy_types)
         if asg_name:
             search_kwargs['AutoScalingGroupName'] = asg_name
@@ -188,7 +188,7 @@ class AppAutoScalePolicy(BaseService):
         return self
 
     @classmethod
-    def list(cls, service_namespace, resource_id=None):
+    async def list(cls, service_namespace, resource_id=None):
         search_kwargs = dict(ServiceNamespace=service_namespace)
         if resource_id:
             search_kwargs['ResourceId'] = resource_id
@@ -206,10 +206,10 @@ class AppService(BaseService):
         raise NotImplementedError
 
     @property
-    def scaling_policies(self):
+    async def scaling_policies(self):
         if self._auto_scale_policies is None:
             asp = self._get_service_class('app_scaling_policy')
-            asp_list = asp.list(service_namespace=self.boto3_service_name, resource_id=self.resource_id)
+            asp_list = await asp.list(service_namespace=self.boto3_service_name, resource_id=self.resource_id)
             self._auto_scale_policies = asp_list
         return self._auto_scale_policies
 
@@ -226,10 +226,10 @@ class AutoScaleService(BaseService):
     _auto_scale_policies: list = None
 
     @property
-    def scaling_policies(self):
+    async def scaling_policies(self):
         if self._auto_scale_policies is None:
             asp = self._get_service_class('scaling_policy')
-            asp_list = asp.list(self.name)
+            asp_list = await asp.list(self.name)
             self._auto_scale_policies = asp_list
         return self._auto_scale_policies
 
@@ -273,18 +273,18 @@ class MetricService(BaseService):
         return metrics
 
     @property
-    def available_metrics(self):
+    async def available_metrics(self):
         if self._available_metrics is None:
             metrics = self._get_service_class('metric')
-            metrics = metrics.list(Namespace=self._stat_name, Dimensions=self._stat_dimensions)
+            metrics = await metrics.list(Namespace=self._stat_name, Dimensions=self._stat_dimensions)
             self._available_metrics = metrics
         return self._available_metrics
 
     @property
-    def metric_options(self):
+    async def metric_options(self):
         if self._available_metrics is None:
             metrics = self._get_service_class('metric')
-            metrics = metrics.list(Namespace=self._stat_name, Dimensions=self._stat_dimensions)
+            metrics = await metrics.list(Namespace=self._stat_name, Dimensions=self._stat_dimensions)
             self._available_metrics = metrics
         return set(metric.name for metric in self._available_metrics)
 
@@ -341,7 +341,7 @@ class SecurityGroup(BaseService):
         return obj
 
     @classmethod
-    def list(cls, **kwargs):
+    async def list(cls, **kwargs):
         """
         :param kwargs:
         :return:
@@ -386,7 +386,7 @@ class EC2Instance(BaseService):
     client_id = 'Instance'
 
     @classmethod
-    def _list(cls, instance_ids=[], filters=[]) -> list:
+    async def _list(cls, instance_ids=[], filters=[]) -> list:
         """
         boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_instances
 
@@ -448,7 +448,7 @@ class ASG(AutoScaleService):
             raise ValueError(f'{sg_list} != list<{class_type}>')
 
     @property
-    def accessible_resources(self):
+    async def accessible_resources(self):
         if self._accessible_resources is None:
             filter_list = [sg.id for sg in self.security_groups]
             if not filter_list:
@@ -456,7 +456,7 @@ class ASG(AutoScaleService):
                 return self._accessible_resources
 
             instance_obj = self._get_service_class('security_group')
-            self._accessible_resources = instance_obj.list(Filters=[dict(
+            self._accessible_resources = await instance_obj.list(Filters=[dict(
                 Name='ip-permission.group-id',
                 Values=filter_list
             )])
@@ -472,7 +472,7 @@ class ASG(AutoScaleService):
             raise ValueError(f'{sg_list} != list<{class_type}>')
 
     @classmethod
-    def _list(cls, **kwargs):
+    async def _list(cls, **kwargs):
         """
         :param kwargs:
         :return:
@@ -507,18 +507,17 @@ class ECSTask(BaseService):
         return cls(id=id, cluster=cluster_name).load()
 
     @classmethod
-    def _list(cls, cluster_name, loop=asyncio.get_event_loop(), **kwargs):
+    async def _list(cls, cluster_name, **kwargs):
         """
         For list of accepted kwarg values:
         https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.list_tasks
             Both snake case as well as the exact key are accepted
         :param cluster_name:
-        :param loop: Optionally pass an event loop
         :param kwargs:
         :return:
         """
         kwargs['cluster'] = cluster_name
-        return cls._list(describe_kwargs=dict(cluster=cluster_name), loop=loop, **kwargs)
+        return await cls.list(describe_kwargs=dict(cluster=cluster_name), **kwargs)
 
 
 class ECSService(AppService, MetricService):
@@ -566,18 +565,17 @@ class ECSService(AppService, MetricService):
         return cls(name=name, cluster=cluster_name).load()
 
     @classmethod
-    def list(cls, cluster_name, loop=asyncio.get_event_loop(), **kwargs):
+    async def list(cls, cluster_name, **kwargs):
         """
         For list of accepted kwarg values:
         https://docs.aws.amazon.com/AmazonECS/latest/developerguide/cluster-query-language.html
             Both snake case as well as the exact key are accepted
         :param cluster_name:
-        :param loop: Optionally pass an event loop
         :param kwargs:
         :return:
         """
         kwargs['cluster'] = cluster_name
-        return cls._list(describe_kwargs=dict(cluster=cluster_name), loop=loop, **kwargs)
+        return await cls._list(describe_kwargs=dict(cluster=cluster_name), **kwargs)
 
 
 class ECSInstance(BaseService):
@@ -605,18 +603,17 @@ class ECSInstance(BaseService):
         return cls(id=id, cluster=cluster_name).load()
 
     @classmethod
-    def list(cls, cluster_name, loop=asyncio.get_event_loop(), **kwargs):
+    async def list(cls, cluster_name, **kwargs):
         """
         For list of accepted kwarg values:
         https://docs.aws.amazon.com/AmazonECS/latest/developerguide/cluster-query-language.html
             Both snake case as well as the exact key are accepted
         :param cluster_name:
-        :param loop: Optionally pass an event loop
         :param kwargs:
         :return:
         """
         kwargs['cluster'] = cluster_name
-        return cls._list(describe_kwargs=dict(cluster=cluster_name), loop=loop, **kwargs)
+        return await cls._list(describe_kwargs=dict(cluster=cluster_name), **kwargs)
 
 
 class ECSCluster(AutoScaleService, MetricService):
@@ -657,10 +654,10 @@ class ECSCluster(AutoScaleService, MetricService):
             raise ValueError(f'{asg} != {class_type}')
 
     @property
-    def instances(self):
+    async def instances(self):
         if self._instances is None:
             instance_obj = self._get_service_class('ecs_instance')
-            self._instances = instance_obj.list(self.name)
+            self._instances = await instance_obj.list(self.name)
         return self._instances
 
     @instances.setter
@@ -672,10 +669,10 @@ class ECSCluster(AutoScaleService, MetricService):
             raise ValueError(f'{instance_list} != list<{class_type}>')
 
     @property
-    def services(self):
+    async def services(self):
         if self._services is None:
             instance_obj = self._get_service_class('ecs_service')
-            self._services = instance_obj.list(self.name)
+            self._services = await instance_obj.list(self.name)
         return self._services
 
     @services.setter
@@ -704,10 +701,9 @@ class ECSCluster(AutoScaleService, MetricService):
         return cls(name=name, _options=options).load()
 
     @classmethod
-    def list(cls, loop=asyncio.get_event_loop(), **kwargs):
+    async def list(cls, **kwargs):
         """
-        :param loop: Optionally pass an event loop
         :param kwargs:
         :return:
         """
-        return cls._list(loop=loop, **kwargs)
+        return await cls._list(**kwargs)
