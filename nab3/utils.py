@@ -45,16 +45,14 @@ def paginated_search(search_fnc, search_kwargs: dict, response_key: str, max_res
             return results
 
 
-async def describe(search_fnc, id_key: str, id_list: list, search_kwargs: dict, chunk_size: int = 25):
-    async def _describe(id_val):
-        return search_fnc(**{**{id_key: [id_val]}, **search_kwargs})
+async def describe(search_fnc, id_key: str, id_list: list, search_kwargs: dict, chunk_size: int = 50):
+    async def _describe(chunked_list):
+        return search_fnc(**{**{id_key: chunked_list}, **search_kwargs})
 
     if len(id_list) <= chunk_size:
         return [search_fnc(**{**{id_key: id_list}, **search_kwargs})]
 
-    response = [await asyncio.gather(*[_describe(id_val) for id_val in id_list[x:x+chunk_size]])
-                for x in range(0, len(id_list), chunk_size)]
-    return list(chain.from_iterable(response))
+    return await asyncio.gather(*[_describe(id_list[x:x+chunk_size]) for x in range(0, len(id_list), chunk_size)])
 
 
 class Filter:
@@ -65,7 +63,6 @@ class Filter:
     def filter(self, **kwargs):
         for k, v in kwargs.items():
             self.filter_params[k] = v
-
         return self
 
     async def _match(self, service_obj, param_as_list, filter_value) -> tuple:
