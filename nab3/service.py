@@ -213,6 +213,14 @@ class AppService(BaseService):
             self._auto_scale_policies = asp_list
         return self._auto_scale_policies
 
+    @scaling_policies.setter
+    def scaling_policies(self, policy_list):
+        class_type = self._get_service_class('app_scaling_policy')
+        if isinstance(policy_list, list) and all(isinstance(policy, class_type) for policy in policy_list):
+            self._auto_scale_policies = policy_list
+        else:
+            raise ValueError(f'{policy_list} != list<{class_type}>')
+
 
 class AutoScaleService(BaseService):
     _auto_scale_policies: list = None
@@ -225,15 +233,23 @@ class AutoScaleService(BaseService):
             self._auto_scale_policies = asp_list
         return self._auto_scale_policies
 
+    @scaling_policies.setter
+    def scaling_policies(self, policy_list):
+        class_type = self._get_service_class('scaling_policy')
+        if isinstance(policy_list, list) and all(isinstance(policy, class_type) for policy in policy_list):
+            self._auto_scale_policies = policy_list
+        else:
+            raise ValueError(f'{policy_list} != list<{class_type}>')
+
 
 class MetricService(BaseService):
     _available_metrics = None
 
     def get_statistics(self,
-                    metric_name: str,
-                    start_time: dt = dt.utcnow()-timedelta(hours=3),
-                    end_time: dt = dt.utcnow(),
-                    interval_as_seconds: int = 300, **kwargs) -> list:
+                       metric_name: str,
+                       start_time: dt = dt.utcnow()-timedelta(hours=3),
+                       end_time: dt = dt.utcnow(),
+                       interval_as_seconds: int = 300, **kwargs) -> list:
         """
         :param metric_name:
         :param start_time:
@@ -370,7 +386,7 @@ class EC2Instance(BaseService):
     client_id = 'Instance'
 
     @classmethod
-    def list(cls, instance_ids=[], filters=[]) -> list:
+    def _list(cls, instance_ids=[], filters=[]) -> list:
         """
         boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_instances
 
@@ -423,6 +439,14 @@ class ASG(AutoScaleService):
                 self._security_groups = []
         return self._security_groups
 
+    @security_groups.setter
+    def security_groups(self, sg_list):
+        class_type = self._get_service_class('security_group')
+        if isinstance(sg_list, list) and all(isinstance(sg, class_type) for sg in sg_list):
+            self._security_groups = sg_list
+        else:
+            raise ValueError(f'{sg_list} != list<{class_type}>')
+
     @property
     def accessible_resources(self):
         if self._accessible_resources is None:
@@ -439,8 +463,16 @@ class ASG(AutoScaleService):
 
         return self._accessible_resources
 
+    @accessible_resources.setter
+    def accessible_resources(self, sg_list):
+        class_type = self._get_service_class('security_group')
+        if isinstance(sg_list, list) and all(isinstance(sg, class_type) for sg in sg_list):
+            self._accessible_resources = sg_list
+        else:
+            raise ValueError(f'{sg_list} != list<{class_type}>')
+
     @classmethod
-    def list(cls, **kwargs):
+    def _list(cls, **kwargs):
         """
         :param kwargs:
         :return:
@@ -475,7 +507,7 @@ class ECSTask(BaseService):
         return cls(id=id, cluster=cluster_name).load()
 
     @classmethod
-    def list(cls, cluster_name, loop=asyncio.get_event_loop(), **kwargs):
+    def _list(cls, cluster_name, loop=asyncio.get_event_loop(), **kwargs):
         """
         For list of accepted kwarg values:
         https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.list_tasks
@@ -589,7 +621,7 @@ class ECSInstance(BaseService):
 
 class ECSCluster(AutoScaleService, MetricService):
     boto3_service_name = 'ecs'
-    client_id = 'Cluster'
+    client_id = 'cluster'
     _asg = None
     _instances = None
     _services = None
@@ -607,7 +639,6 @@ class ECSCluster(AutoScaleService, MetricService):
         if response:
             for k, v in response[0].items():
                 self._set_attr(k, v)
-
         return self
 
     @property
@@ -617,6 +648,14 @@ class ECSCluster(AutoScaleService, MetricService):
             self._asg = asg_obj.get(name=self.name)
         return self._asg
 
+    @asg.setter
+    def asg(self, asg):
+        class_type = self._get_service_class('ecs_asg')
+        if isinstance(asg, class_type):
+            self._asg = asg
+        else:
+            raise ValueError(f'{asg} != {class_type}')
+
     @property
     def instances(self):
         if self._instances is None:
@@ -624,12 +663,28 @@ class ECSCluster(AutoScaleService, MetricService):
             self._instances = instance_obj.list(self.name)
         return self._instances
 
+    @instances.setter
+    def instances(self, instance_list: list):
+        class_type = self._get_service_class('ecs_instance')
+        if isinstance(instance_list, list) and all(isinstance(instance, class_type) for instance in instance_list):
+            self._instances = instance_list
+        else:
+            raise ValueError(f'{instance_list} != list<{class_type}>')
+
     @property
     def services(self):
         if self._services is None:
             instance_obj = self._get_service_class('ecs_service')
             self._services = instance_obj.list(self.name)
         return self._services
+
+    @services.setter
+    def services(self, services_list: list):
+        class_type = self._get_service_class('ecs_service')
+        if isinstance(services_list, list) and all(isinstance(svc, class_type) for svc in services_list):
+            self._services = services_list
+        else:
+            raise ValueError(f'{services_list} != list<{class_type}>')
 
     @property
     def _stat_dimensions(self) -> list:
@@ -647,3 +702,12 @@ class ECSCluster(AutoScaleService, MetricService):
         :return:
         """
         return cls(name=name, _options=options).load()
+
+    @classmethod
+    def list(cls, loop=asyncio.get_event_loop(), **kwargs):
+        """
+        :param loop: Optionally pass an event loop
+        :param kwargs:
+        :return:
+        """
+        return cls._list(loop=loop, **kwargs)
