@@ -6,7 +6,7 @@ from itertools import chain
 import boto3
 import botocore
 
-from nab3.utils import async_describe, camel_to_snake, paginated_search, snake_to_camelback
+from nab3.utils import async_describe, camel_to_snake, Filter, paginated_search, snake_to_camelback
 
 
 class ClientHandler:
@@ -267,6 +267,9 @@ class BaseService(BaseAWS):
         describe_kwargs = {snake_to_camelback(k): v for k, v in describe_kwargs.items()}
         search_kwargs = {snake_to_camelback(k): v for k, v in kwargs.items()}
         results = paginated_search(list_fnc, search_kwargs, list_key)
+        if not results:
+            return results
+
         loaded_results = async_describe(describe_fnc,
                                         id_key=describe_key,
                                         id_list=results,
@@ -277,12 +280,27 @@ class BaseService(BaseAWS):
         return [cls(_loaded=True, **obj) for obj in response]
 
     @classmethod
-    def list(cls, loop=asyncio.get_event_loop(), **kwargs) -> list:
+    def list(cls, **kwargs) -> list:
         """Returns an instance for each object
-        JMESPath for filtering: https://jmespath.org
 
-        :param loop: Optionally pass an event loop
         :param kwargs:
         :return: list<cls()>
         """
-        return cls._list(loop, **kwargs)
+        return cls._list(**kwargs)
+
+    @classmethod
+    def filter(cls, **kwargs) -> list:
+        """Returns an instance for each object
+
+        :param kwargs:
+        :return: list<cls()>
+        """
+        filter_operations = [f'__{filter_op}' for filter_op in Filter.get_operations()]
+        filter_kwargs = {k: v for k, v in kwargs.items() if any(k.endswith(op) for op in filter_operations)}
+        kwargs = {k: v for k, v in kwargs.items() if k not in filter_kwargs.keys()}
+        service_objects = cls.list(**kwargs)
+        if service_objects and filter_kwargs:
+            filter_obj = Filter(**filter_kwargs)
+            return filter_obj.run(service_objects)
+        else:
+            return service_objects
