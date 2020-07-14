@@ -130,7 +130,7 @@ class AutoScalePolicy(BaseService):
 
         return alerts
 
-    def _load(self):
+    async def _load(self):
         response = self.client.describe_policies(
             PolicyNames=[self.name]
         )['ScalingPolicies']
@@ -176,7 +176,7 @@ class AppAutoScalePolicy(BaseService):
 
         return alerts
 
-    def _load(self):
+    async def _load(self):
         response = self.client.describe_scaling_policies(
             ServiceNamespace=self.service_namespace,
             ResourceId=self.resource_id
@@ -193,13 +193,13 @@ class AppAutoScalePolicy(BaseService):
         if resource_id:
             search_kwargs['ResourceId'] = resource_id
 
-        search_fnc = cls._client.get(cls.boto3_service_name).describe_scaling_policies
+        search_fnc = await cls._client.get(cls.boto3_service_name).describe_scaling_policies
         results = paginated_search(search_fnc, search_kwargs, 'ScalingPolicies')
-        return [cls(_loaded=True, **result).load() for result in results]
+        return await asyncio.gather(*[cls(_loaded=True, **result).load() for result in results])
 
 
-class AppService(BaseService):
-    _auto_scale_policies: list = None
+class BaseAppService(BaseService):
+    _auto_scale_policies: list = False
 
     @property
     def resource_id(self):
@@ -207,7 +207,7 @@ class AppService(BaseService):
 
     @property
     async def scaling_policies(self):
-        if self._auto_scale_policies is None:
+        if self._auto_scale_policies is False:
             asp = self._get_service_class('app_scaling_policy')
             asp_list = await asp.list(service_namespace=self.boto3_service_name, resource_id=self.resource_id)
             self._auto_scale_policies = asp_list
@@ -222,12 +222,12 @@ class AppService(BaseService):
             raise ValueError(f'{policy_list} != list<{class_type}>')
 
 
-class AutoScaleService(BaseService):
-    _auto_scale_policies: list = None
+class BaseAutoScaleService(BaseService):
+    _auto_scale_policies: list = False
 
     @property
     async def scaling_policies(self):
-        if self._auto_scale_policies is None:
+        if self._auto_scale_policies is False:
             asp = self._get_service_class('scaling_policy')
             asp_list = await asp.list(self.name)
             self._auto_scale_policies = asp_list
@@ -242,8 +242,51 @@ class AutoScaleService(BaseService):
             raise ValueError(f'{policy_list} != list<{class_type}>')
 
 
+class BaseSecurityGroupService(BaseService):
+    _accessible_resources = False
+    _security_groups = False
+
+    @property
+    async def accessible_resources(self):
+        if self._accessible_resources is False:
+            filter_list = [sg.id for sg in await self.security_groups]
+            if not filter_list:
+                self._accessible_resources = []
+                return self._accessible_resources
+
+            instance_obj = self._get_service_class('security_group')
+            self._accessible_resources = await instance_obj.list(Filters=[dict(
+                Name='ip-permission.group-id',
+                Values=filter_list
+            )])
+
+        return self._accessible_resources
+
+    @accessible_resources.setter
+    def accessible_resources(self, sg_list):
+        class_type = self._get_service_class('security_group')
+        if isinstance(sg_list, list) and all(isinstance(sg, class_type) for sg in sg_list):
+            self._accessible_resources = sg_list
+        else:
+            raise ValueError(f'{sg_list} != list<{class_type}>')
+
+    @property
+    async def security_groups(self):
+        if self._security_groups is False:
+            await self.load()
+        return self._security_groups
+
+    @security_groups.setter
+    def security_groups(self, sg_list):
+        class_type = self._get_service_class('security_group')
+        if isinstance(sg_list, list) and all(isinstance(sg, class_type) for sg in sg_list):
+            self._security_groups = sg_list
+        else:
+            raise ValueError(f'{sg_list} != list<{class_type}>')
+
+
 class MetricService(BaseService):
-    _available_metrics = None
+    _available_metrics = False
 
     def get_statistics(self,
                        metric_name: str,
@@ -262,7 +305,7 @@ class MetricService(BaseService):
         dimensions = self._stat_dimensions + kwargs.get('Dimensions', [])
         kwargs['Dimensions'] = dimensions
 
-        if kwargs.get('ExtendedStatistics') is None and kwargs.get('Statistics') is None:
+        if kwargs.get('ExtendedStatistics') is False and kwargs.get('Statistics') is False:
             LOGGER.warning('Neither ExtendedStatistics or Statistics was set. Defaulting to Statistics=[Average]')
             kwargs['Statistics'] = ['Average']
 
@@ -274,7 +317,7 @@ class MetricService(BaseService):
 
     @property
     async def available_metrics(self):
-        if self._available_metrics is None:
+        if self._available_metrics is False:
             metrics = self._get_service_class('metric')
             metrics = await metrics.list(Namespace=self._stat_name, Dimensions=self._stat_dimensions)
             self._available_metrics = metrics
@@ -282,7 +325,7 @@ class MetricService(BaseService):
 
     @property
     async def metric_options(self):
-        if self._available_metrics is None:
+        if self._available_metrics is False:
             metrics = self._get_service_class('metric')
             metrics = await metrics.list(Namespace=self._stat_name, Dimensions=self._stat_dimensions)
             self._available_metrics = metrics
@@ -309,9 +352,9 @@ class SecurityGroup(BaseService):
     client_id = 'SecurityGroup'
     key_prefix = 'Group'
     _service_list_map = dict(user_id_group_pairs='security_group')
-    _accessible_sg = None
+    _accessible_sg = False
 
-    def _load(self):
+    async def _load(self):
         group_id = getattr(self, 'id', None)
         group_name = getattr(self, 'name', None)
         if not group_id and not group_name:
@@ -330,15 +373,14 @@ class SecurityGroup(BaseService):
         return self
 
     @classmethod
-    def get(cls, sg_id=None, sg_name=None):
+    async def get(cls, sg_id=None, sg_name=None):
         """
         :param sg_id:
         :param sg_name:
         :return: SecurityGroup()
         """
         obj = cls(id=sg_id, name=sg_name)
-        obj.load()
-        return obj
+        return await obj.load()
 
     @classmethod
     async def list(cls, **kwargs):
@@ -358,7 +400,7 @@ class LaunchConfiguration(BaseService):
     boto3_service_name = 'autoscaling'
     client_id = 'LaunchConfiguration'
 
-    def _load(self):
+    async def _load(self):
         response = self.client.describe_launch_configurations(
             LaunchConfigurationNames=[self.name],
             MaxRecords=1
@@ -373,12 +415,51 @@ class LaunchConfiguration(BaseService):
         return self
 
 
-class LoadBalancer(BaseService):
+class LoadBalancer(BaseSecurityGroupService, BaseService):
     boto3_service_name = 'elbv2'
     client_id = 'LoadBalancer'
+    """
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/elbv2.html#ElasticLoadBalancingv2.Client.describe_load_balancers
+    """
 
-    def _load(self):
-        pass
+    @classmethod
+    async def list(cls, **kwargs):
+        """
+        :param asg_name: Name of an AutoScaling Group
+        :param kwargs:
+        :return:
+        """
+        client = cls._client.get(cls.boto3_service_name)
+        response = paginated_search(client.describe_load_balancers, kwargs, f"{cls.client_id}s")
+        return [cls(_loaded=True, **obj) for obj in response]
+
+
+class LoadBalancerClassic(BaseSecurityGroupService, BaseService):
+    boto3_service_name = 'elb'
+    client_id = 'LoadBalancer'
+    """
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/elbv2.html#ElasticLoadBalancingv2.Client.describe_load_balancers
+    """
+
+    async def _load(self):
+        response = self.client.describe_load_balancers(
+            LoadBalancerNames=[self.name]
+        )['LoadBalancerDescriptions']
+        if response:
+            for k, v in response[0].items():
+                self._set_attr(k, v)
+
+        return self
+
+    @classmethod
+    async def list(cls, **kwargs):
+        """
+        :param kwargs:
+        :return:
+        """
+        client = cls._client.get(cls.boto3_service_name)
+        response = paginated_search(client.describe_load_balancers, kwargs, f"LoadBalancerDescriptions")
+        return [cls(_loaded=True, **obj) for obj in response]
 
 
 class EC2Instance(BaseService):
@@ -400,7 +481,7 @@ class EC2Instance(BaseService):
         instances = list(chain.from_iterable([obj['Instances']] for obj in results))
         return [cls(_loaded=True, **result) for result in instances]
 
-    def _load(self):
+    async def _load(self):
         response = self.client.describe_instances(InstanceIds=[self.id])
         response = response.get('Reservations', [])
         if response:
@@ -410,16 +491,15 @@ class EC2Instance(BaseService):
         return self
 
 
-class ASG(AutoScaleService):
+class ASG(BaseSecurityGroupService, BaseAutoScaleService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/autoscaling.html#AutoScaling.Client.describe_launch_configurations
     """
     boto3_service_name = 'autoscaling'
     client_id = 'AutoScalingGroup'
-    _security_groups = None
-    _accessible_resources = None
+    _load_balancers = []
 
-    def _load(self):
+    async def _load(self):
         response = self.client.describe_auto_scaling_groups(
             AutoScalingGroupNames=[self.name]
         )[f'{self.client_id}s']
@@ -430,46 +510,29 @@ class ASG(AutoScaleService):
         return self
 
     @property
-    def security_groups(self):
-        if self._security_groups is None:
+    async def security_groups(self):
+        if self._security_groups is False:
             try:
-                l_config = self.launch_configuration.load()
-                self._security_groups = [sg.load() for sg in l_config.security_groups]
+                l_config = await self.launch_configuration.load()
+                sg_ids = [sg.id for sg in l_config.security_groups]
+                sg_class = self._get_service_class('security_group')
+                self._security_groups = l_config.security_groups = await sg_class.list(GroupIds=sg_ids)
             except AttributeError:
                 self._security_groups = []
         return self._security_groups
 
-    @security_groups.setter
-    def security_groups(self, sg_list):
-        class_type = self._get_service_class('security_group')
-        if isinstance(sg_list, list) and all(isinstance(sg, class_type) for sg in sg_list):
-            self._security_groups = sg_list
-        else:
-            raise ValueError(f'{sg_list} != list<{class_type}>')
-
     @property
-    async def accessible_resources(self):
-        if self._accessible_resources is None:
-            filter_list = [sg.id for sg in self.security_groups]
-            if not filter_list:
-                self._accessible_resources = []
-                return self._accessible_resources
+    async def load_balancers(self):
+        return self._load_balancers
 
-            instance_obj = self._get_service_class('security_group')
-            self._accessible_resources = await instance_obj.list(Filters=[dict(
-                Name='ip-permission.group-id',
-                Values=filter_list
-            )])
-
-        return self._accessible_resources
-
-    @accessible_resources.setter
-    def accessible_resources(self, sg_list):
-        class_type = self._get_service_class('security_group')
-        if isinstance(sg_list, list) and all(isinstance(sg, class_type) for sg in sg_list):
-            self._accessible_resources = sg_list
+    @load_balancers.setter
+    def load_balancers(self, lb_list):
+        lb_v2 = self._get_service_class('load_balancer')
+        lb_classic = self._get_service_class('load_balancer_classic')
+        if isinstance(lb_list, list) and all(isinstance(lb, lb_v2) or isinstance(lb, lb_classic)for lb in lb_list):
+            self._load_balancers = lb_list
         else:
-            raise ValueError(f'{sg_list} != list<{class_type}>')
+            raise ValueError(f'{lb_list} != list<{lb_v2} | {lb_classic}>')
 
     @classmethod
     async def _list(cls, **kwargs):
@@ -481,12 +544,31 @@ class ASG(AutoScaleService):
         response = paginated_search(client.describe_auto_scaling_groups, kwargs, f"{cls.client_id}s")
         return [cls(_loaded=True, **obj) for obj in response]
 
+    @classmethod
+    async def get(cls, instance_id=None, **kwargs):
+        """Hits the client to set the entirety of the object using the provided lookup field.
+        :param instance_id: An EC2 instance ID
+        :return:
+        """
+        if instance_id:
+            client = cls._client.get(cls.boto3_service_name)
+            response = client.describe_auto_scaling_instances(
+                InstanceIds=[instance_id]
+            )['AutoScalingInstances']
+            if response:
+                instance = response[0]
+                kwargs['name'] = instance.get('AutoScalingGroupName')
+            else:
+                raise ValueError(f'{instance_id} not found or does not belong to an auto scaling group')
+        obj = cls(**kwargs)
+        return await obj.load()
+
 
 class ECSTask(BaseService):
     boto3_service_name = 'ecs'
     client_id = 'task'
 
-    def _load(self):
+    async def _load(self):
         response = self.client.describe_tasks(
             cluster=self.cluster,
             tasks=[self.id]
@@ -498,13 +580,13 @@ class ECSTask(BaseService):
         return self
 
     @classmethod
-    def get(cls, id, cluster_name):
+    async def get(cls, id, cluster_name):
         """
         :param cluster_name: string Name of the ECS Cluster the instance belongs to
         :param id: string The task instance ID
         :return:
         """
-        return cls(id=id, cluster=cluster_name).load()
+        return await cls(id=id, cluster=cluster_name).load()
 
     @classmethod
     async def _list(cls, cluster_name, **kwargs):
@@ -520,12 +602,12 @@ class ECSTask(BaseService):
         return await cls.list(describe_kwargs=dict(cluster=cluster_name), **kwargs)
 
 
-class ECSService(AppService, MetricService):
+class ECSService(BaseAppService, MetricService):
     boto3_service_name = 'ecs'
     client_id = 'service'
-    _cluster = None
+    _cluster = False
 
-    def _load(self):
+    async def _load(self):
         response = self.client.describe_services(
             cluster=self.cluster,
             services=[self.name]
@@ -537,9 +619,9 @@ class ECSService(AppService, MetricService):
         return self
 
     @property
-    def cluster(self):
-        if self._cluster is None:
-            self.load()
+    async def cluster(self):
+        if self._cluster is False:
+            await self.load()
             self._cluster = self.cluster_arn.split('/')[-1]
         return self._cluster
 
@@ -556,13 +638,13 @@ class ECSService(AppService, MetricService):
         return 'AWS/ECS'
 
     @classmethod
-    def get(cls, name, cluster_name):
+    async def get(cls, name, cluster_name):
         """
         :param cluster_name: string Name of the ECS Cluster the instance belongs to
         :param name: string The name of the service
         :return:
         """
-        return cls(name=name, cluster=cluster_name).load()
+        return await cls(name=name, cluster=cluster_name).load()
 
     @classmethod
     async def list(cls, cluster_name, **kwargs):
@@ -582,7 +664,7 @@ class ECSInstance(BaseService):
     boto3_service_name = 'ecs'
     client_id = 'containerInstance'
 
-    def _load(self):
+    async def _load(self):
         response = self.client.describe_container_instances(
             cluster=self.cluster,
             containerInstances=[self.id]
@@ -594,13 +676,13 @@ class ECSInstance(BaseService):
         return self
 
     @classmethod
-    def get(cls, id, cluster_name):
+    async def get(cls, id, cluster_name):
         """
         :param cluster_name: string Name of the ECS Cluster the instance belongs to
         :param id: string The Container instance ID
         :return:
         """
-        return cls(id=id, cluster=cluster_name).load()
+        return await cls(id=id, cluster=cluster_name).load()
 
     @classmethod
     async def list(cls, cluster_name, **kwargs):
@@ -616,14 +698,14 @@ class ECSInstance(BaseService):
         return await cls._list(describe_kwargs=dict(cluster=cluster_name), **kwargs)
 
 
-class ECSCluster(AutoScaleService, MetricService):
+class ECSCluster(BaseAutoScaleService, MetricService):
     boto3_service_name = 'ecs'
     client_id = 'cluster'
-    _asg = None
-    _instances = None
-    _services = None
+    _asg = False
+    _instances = False
+    _services = False
 
-    def _load(self):
+    async def _load(self):
         """
         boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.describe_clusters
         :param options: list<`ATTACHMENTS'|'SETTINGS'|'STATISTICS'|'TAGS'>
@@ -639,10 +721,12 @@ class ECSCluster(AutoScaleService, MetricService):
         return self
 
     @property
-    def asg(self):
-        if self._asg is None:
+    async def asg(self):
+        if self._asg is False:
+            container_instance = await self.instances
+            container_instance = container_instance[0]
             asg_obj = self._get_service_class('asg')
-            self._asg = asg_obj.get(name=self.name)
+            self._asg = await asg_obj.get(instance_id=container_instance.ec2_instance_id)
         return self._asg
 
     @asg.setter
@@ -655,7 +739,7 @@ class ECSCluster(AutoScaleService, MetricService):
 
     @property
     async def instances(self):
-        if self._instances is None:
+        if self._instances is False:
             instance_obj = self._get_service_class('ecs_instance')
             self._instances = await instance_obj.list(self.name)
         return self._instances
@@ -670,7 +754,7 @@ class ECSCluster(AutoScaleService, MetricService):
 
     @property
     async def services(self):
-        if self._services is None:
+        if self._services is False:
             instance_obj = self._get_service_class('ecs_service')
             self._services = await instance_obj.list(self.name)
         return self._services
@@ -692,18 +776,10 @@ class ECSCluster(AutoScaleService, MetricService):
         return 'AWS/ECS'
 
     @classmethod
-    def get(cls, name, options=['ATTACHMENTS', 'STATISTICS', 'SETTINGS']):
+    async def get(cls, name, options=['ATTACHMENTS', 'STATISTICS', 'SETTINGS']):
         """
         :param name:
         :param options: list<`ATTACHMENTS'|'SETTINGS'|'STATISTICS'|'TAGS'>
         :return:
         """
-        return cls(name=name, _options=options).load()
-
-    @classmethod
-    async def list(cls, **kwargs):
-        """
-        :param kwargs:
-        :return:
-        """
-        return await cls._list(**kwargs)
+        return await cls(name=name, _options=options).load()
