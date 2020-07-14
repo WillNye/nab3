@@ -45,6 +45,8 @@ class BaseAWS:
         ecs_task='ECSTask',
         instance='EC2Instance',
         launch_configuration='LaunchConfiguration',
+        load_balancer='LoadBalancer',
+        load_balancer_classic='LoadBalancerClassic',
         metric='Metric',
         scaling_policy='AutoScalePolicy',
         security_group='SecurityGroup',
@@ -118,7 +120,6 @@ class BaseService(BaseAWS):
                             LoadBalancerNames -> name is the key
                             SecurityGroups -> id is the key
 
-
         :param obj:
         :return: normalized obj
         """
@@ -158,7 +159,7 @@ class BaseService(BaseAWS):
                                     cls_key = 'id'
                                 else:
                                     # extract the key
-                                    obj_key = svc_name
+                                    obj_key = f'{svc_name}s'
                                     cls_key = orig_key.replace(svc_name, "")
                                     cls_key = cls_key[1:] if cls_key.startswith("_") else cls_key
                                     cls_key = cls_key[:-1] if cls_key.endswith("s") else cls_key
@@ -197,12 +198,16 @@ class BaseService(BaseAWS):
             attr_val = new_v
             break
 
-        self.__setattr__(attr_key, attr_val)
+        try:
+            self.__setattr__(attr_key, attr_val)
+        except AttributeError:
+            print(attr_key, attr_val)
+            raise
 
-    def _load(self, **kwargs):
+    async def _load(self, **kwargs):
         raise NotImplementedError
 
-    def load(self, **kwargs):
+    async def load(self, **kwargs):
         """Hits the client to retrieve the entirety of the object.
 
         Used for returning loading the rest of an object that is generated as part of another object's response.
@@ -223,19 +228,18 @@ class BaseService(BaseAWS):
         """
         if not self.loaded:
             self._loaded = True
-            return self._load(**kwargs)
+            return await self._load(**kwargs)
         else:
             return self
 
     @classmethod
-    def get(cls, **kwargs):
+    async def get(cls, **kwargs):
         """Hits the client to set the entirety of the object using the provided lookup field.
 
         :return:
         """
         obj = cls(**kwargs)
-        obj.load()
-        return obj
+        return await obj.load()
 
     @classmethod
     async def _list(cls,
