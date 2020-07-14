@@ -3,15 +3,14 @@ from double_click.markdown import generate_md_bullet_str, generate_md_table_str
 from nab3.helpers.cloud_watch import md_alerts
 
 
-def md_ecs_service_summary(ecs_service, display_alerts=True, display_events=True) -> str:
+async def md_ecs_service_summary(ecs_service, display_alerts=True, display_events=True) -> str:
     """
     :param ecs_service: ECSService object
     :param display_alerts: bool Default(True) - Display service cloudwatch alarms for the last 30 days
     :param display_events: bool Default(True) - Display the 50 most recent events of the service
     :return:
     """
-    ecs_service.load()
-
+    await ecs_service.load()
     task_def = ecs_service.task_definition.split("task-definition/")[-1]
     bullets = [
         f"Task Definition: {task_def}",
@@ -33,14 +32,14 @@ def md_ecs_service_summary(ecs_service, display_alerts=True, display_events=True
     return md_output
 
 
-def md_ecs_cluster_summary(ecs_cluster, display_alerts=True, display_service_events=False) -> str:
+async def md_ecs_cluster_summary(ecs_cluster, display_alerts=True, display_service_events=False) -> str:
     """
     :param ecs_cluster: ECSCluster object
     :param display_alerts: bool Default(True) - Display cloudwatch alarms for the last 30 days
     :param display_service_events: bool Default(True) - Display the 50 most recent events of each service
     :return:
     """
-    ecs_cluster.load()
+    await ecs_cluster.load()
     bullets = [
         f"Status: {ecs_cluster.status}",
         f"Instance Count: {ecs_cluster.registered_container_instances_count}"
@@ -51,7 +50,8 @@ def md_ecs_cluster_summary(ecs_cluster, display_alerts=True, display_service_eve
     if display_alerts:
         md_output += md_alerts(ecs_cluster, include_name=False)
 
-    for service in ecs_cluster.services:
+    services = await ecs_cluster.services
+    for service in services:
         md_output += f"#{md_ecs_service_summary(service, display_alerts, display_service_events)}"
 
     return md_output

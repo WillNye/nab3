@@ -94,7 +94,7 @@ class Filter:
                         service_obj[cur_key] = response
                 elif inspect.isclass(type(service_obj)):
                     try:
-                        service_obj.load()
+                        await service_obj.load()
                         if cur_key in service_obj.__dict__:
                             nested_obj = getattr(service_obj, cur_key, None)
                         else:
