@@ -82,13 +82,25 @@ class BaseService(BaseAWS):
     boto3_service_name: str
     client_id: str
     key_prefix: str
-    """_service_list_map maps each element in the list to a service class.
+    """_response_alias maps each element in the list to a service class.
     This is an effort to ensure proper mapping on nested objects.
         example: describe_security_groups contains UserIdGroupPairs
             Each element is essentially a security group with some extra metadata
     """
     _loaded = False
-    _service_list_map = {}
+    _response_alias = {}
+    # These are in relation to the call within the boto3 client
+    # Not all clients/resources have a list operation
+    _boto3_describe_def = dict(
+        # client_call: str default f'describe_{camel_to_snake(self.client_id)}s'
+        # response_key: str default f'{self.client_id}s'
+        call_params=dict(),  # variable_name: str = dict(name:str, type:any)
+    )
+    _boto3_list_def = dict(
+        # client_call: str default f'list_{camel_to_snake(self.client_id)}s'
+        # response_key: str default f'{self.client_id}Arns'
+        call_params=dict(),  # variable_name: str = dict(name:str, type:any)
+    )
 
     def __init__(self, **kwargs):
         key_prefix = getattr(self, 'key_prefix', None)
@@ -127,51 +139,8 @@ class BaseService(BaseAWS):
             new = obj.__class__()
             for obj_key, obj_val in obj.items():
                 obj_key = camel_to_snake(obj_key)
-                svc_list_alias = self._service_list_map.get(obj_key)
-                if svc_list_alias:
-                    new_class = self._get_service_class(svc_list_alias)
-                    if not any(isinstance(svc_instance, new_class) for svc_instance in obj_val):
-                        # Prevents logic errors in recursive call
-                        obj_val = [new_class(**svc_instance) for svc_instance in obj_val]
-                    new[obj_key] = obj_val
-                    continue
-
-                for svc_name in self._service_map.keys():
-                    if obj_key.startswith(svc_name):
-                        new_class = self._get_service_class(svc_name)
-                        if isinstance(obj_val, new_class) or \
-                                (isinstance(obj_val, list)
-                                 and any(isinstance(svc_instance, new_class) for svc_instance in obj_val)):
-                            # Prevents logic errors in recursive call
-                            new[obj_key] = obj_val
-                            break
-
-                        orig_key = str(obj_key)
-                        if isinstance(obj_val, list):
-                            if all(isinstance(svc_instance, dict) for svc_instance in obj_val):
-                                obj_val = [new_class(**svc_instance) for svc_instance in obj_val]
-                            else:
-                                # Sketchy logic incoming
-                                # If the name doesn't include the key, use id as the key.
-                                # e.g. LoadBalancerNames -> name is the key
-                                #       SecurityGroups -> id is the key
-                                if orig_key == f'{svc_name}s':
-                                    cls_key = 'id'
-                                else:
-                                    # extract the key
-                                    obj_key = f'{svc_name}s'
-                                    cls_key = orig_key.replace(svc_name, "")
-                                    cls_key = cls_key[1:] if cls_key.startswith("_") else cls_key
-                                    cls_key = cls_key[:-1] if cls_key.endswith("s") else cls_key
-                                obj_val = [new_class(**{cls_key: svc_val}) for svc_val in obj_val]
-                        elif not isinstance(obj_val, new_class):
-                            # extract the key
-                            obj_key = svc_name
-                            cls_key = orig_key.replace(f"{svc_name}_", "").replace(svc_name, "")
-                            obj_val = new_class(**{cls_key: obj_val})
-                        break
-
-                new[obj_key] = self._recursive_normalizer(obj_val)
+                if not new.get(obj_key):
+                    new[obj_key] = self._recursive_normalizer(obj_val)
 
         elif isinstance(obj, (list, set, tuple)):
             new = obj.__class__(self._recursive_normalizer(v) for v in obj)
@@ -180,7 +149,7 @@ class BaseService(BaseAWS):
 
         return new
 
-    def _set_attr(self, k, v):
+    def _set_attr(self, obj_key, obj_val):
         """Normalize and set the given attribute.
 
         :param k:
@@ -189,23 +158,89 @@ class BaseService(BaseAWS):
         """
         # This isn't in the recursive function to support nested objects
         #   Like a security group containing security objects
-        if k.startswith(self.key_prefix):
-            k = k.replace(self.key_prefix, "")
+        if obj_key.startswith(self.key_prefix):
+            obj_key = obj_key.replace(self.key_prefix, "")
 
-        normalized_output = self._recursive_normalizer(self._recursive_normalizer({k: v}))
-        for new_k, new_v in normalized_output.items():
-            attr_key = new_k
-            attr_val = new_v
-            break
+        obj_key = camel_to_snake(obj_key)
+        svc_list_alias = self._response_alias.get(obj_key)
+        if svc_list_alias:
+            self.create_service_field(obj_key, svc_list_alias)
+            setattr(self, obj_key, obj_val)
+            return
 
+        for svc_name in self._service_map.keys():
+            if obj_key.startswith(svc_name):
+                new_class = self._get_service_class(svc_name)
+                orig_key = str(obj_key)
+                if isinstance(obj_val, list):
+                    if all(isinstance(svc_instance, dict) for svc_instance in obj_val):
+                        obj_val = [new_class(**svc_instance) for svc_instance in obj_val]
+                    else:
+                        # Sketchy logic incoming
+                        # If the name doesn't include the key, use id as the key.
+                        # e.g. LoadBalancerNames -> name is the key
+                        #       SecurityGroups -> id is the key
+                        if orig_key == f'{svc_name}s':
+                            cls_key = 'id'
+                        else:
+                            # extract the key
+                            obj_key = f'{svc_name}s'
+                            cls_key = orig_key.replace(svc_name, "")
+                            cls_key = cls_key[1:] if cls_key.startswith("_") else cls_key
+                            cls_key = cls_key[:-1] if cls_key.endswith("s") else cls_key
+
+                        obj_val = [new_class(**{cls_key: svc_val}) for svc_val in obj_val]
+
+                elif not isinstance(obj_val, ServiceDescriptor):
+                    # extract the key
+                    obj_key = svc_name
+                    cls_key = orig_key.replace(f"{svc_name}_", "").replace(svc_name, "")
+                    obj_val = new_class(**{cls_key: obj_val})
+                else:
+                    return
+
+                self.create_service_field(obj_key, svc_name)
+                setattr(self, obj_key, obj_val)
+                return
+
+        normalized_output = self._recursive_normalizer({obj_key: obj_val})
         try:
-            self.__setattr__(attr_key, attr_val)
+            self.__setattr__(obj_key, normalized_output[obj_key])
         except AttributeError:
-            print(attr_key, attr_val)
-            raise
+            AttributeError(obj_key, normalized_output[obj_key])
+
+    def create_service_field(self, field_name, service_class):
+        if isinstance(getattr(self, field_name, None), type(None)):
+            service_class = self._get_service_class(service_class)
+            setattr(type(self), field_name, ServiceDescriptor(service_class, field_name))
 
     async def _load(self, **kwargs):
-        raise NotImplementedError
+        fnc_base = camel_to_snake(self.client_id)
+        describe_fnc = getattr(self.client, self._boto3_describe_def.get('client_call', f'describe_{fnc_base}s'))
+        call_params = dict()
+        for param_name, param_attrs in self._boto3_describe_def['call_params'].items():
+            value = kwargs.get(param_name, getattr(self, param_name, None))
+            if value:
+                if param_attrs['type'] == list:
+                    value = value if isinstance(value, list) else [value]
+                    param_val = kwargs.get(param_attrs['name'], []) + value
+                    call_params[param_attrs['name']] = param_val
+                else:
+                    call_params[param_attrs['name']] = param_val
+
+        if not call_params:
+            raise AttributeError(f'No valid parameters provided. {self._boto3_describe_def["call_params"].keys()}')
+
+        response = describe_fnc(**call_params)
+        response = response[self._boto3_describe_def.get('response_key', f'{self.client_id}s')]
+        if response:
+            if len(response) == 1:
+                for k, v in response[0].items():
+                    self._set_attr(k, v)
+            else:
+                raise ValueError('Response was not unique')
+
+        return self
 
     async def load(self, **kwargs):
         """Hits the client to retrieve the entirety of the object.
@@ -242,32 +277,36 @@ class BaseService(BaseAWS):
         return await obj.load()
 
     @classmethod
-    async def _list(cls,
-                    list_fnc=None,
-                    describe_fnc=None,
-                    list_key: str = None,
-                    describe_key: str = None,
-                    describe_kwargs: dict = {},
-                    **kwargs) -> list:
+    async def _list(cls, **kwargs) -> list:
         """Returns an instance for each object
         JMESPath for filtering: https://jmespath.org
         :param kwargs:
         :return: list<cls()>
         """
-        if list_fnc is None or describe_fnc is None:
-            fnc_base = camel_to_snake(cls.client_id)
-            client = cls._client.get(cls.boto3_service_name)
+        fnc_base = camel_to_snake(cls.client_id)
+        client = cls._client.get(cls.boto3_service_name)
+        list_fnc = getattr(client, cls._boto3_list_def.get('client_call', f'list_{fnc_base}s'))
+        describe_fnc = getattr(client, cls._boto3_describe_def.get('client_call', f'describe_{fnc_base}s'))
 
-            if list_fnc is None:
-                list_fnc = getattr(client, f'list_{fnc_base}s')
-            if describe_fnc is None:
-                describe_fnc = getattr(client, f'describe_{fnc_base}s')
+        """
+        
+        describe_fnc = getattr(self.client, self._boto3_describe_def['client_call'])
+        call_params = dict()
+        for param_name, param_attrs in self._boto3_describe_def['call_params'].items():
+            value = kwargs.get(param_name, getattr(self, param_name, None))
+            if value:
+                call_params[param_attrs['name']] = param_attrs['type'](value)
 
-        list_key = list_key if list_key else f'{cls.client_id}Arns'
-        describe_key = describe_key if describe_key else f'{cls.client_id}s'
-        describe_kwargs = {snake_to_camelback(k): v for k, v in describe_kwargs.items()}
-        search_kwargs = {snake_to_camelback(k): v for k, v in kwargs.items()}
-        results = paginated_search(list_fnc, search_kwargs, list_key)
+        if not call_params:
+            raise AttributeError(f'No valid parameters provided. {self._boto3_describe_def["call_params"].keys()}')
+
+        response = describe_fnc(**call_params)[self._boto3_describe_def.get('response_key', f'{self.client_id}s')]
+        """
+        list_key = cls._boto3_list_def.get('response_key', f'{cls.client_id}Arns')
+        describe_key = cls._boto3_describe_def.get('response_key', f'{cls.client_id}s')
+        describe_kwargs = {snake_to_camelback(k): v for k, v in kwargs.pop('describe_kwargs').items()}
+        list_kwargs = {snake_to_camelback(k): v for k, v in kwargs.pop('list_kwargs').items()}
+        results = paginated_search(list_fnc, list_kwargs, list_key)
         if not results:
             return results
 
@@ -279,12 +318,41 @@ class BaseService(BaseAWS):
         return [cls(_loaded=True, **obj) for obj in response]
 
     @classmethod
-    async def list(cls, **kwargs) -> list:
+    async def list(cls, fnc_name=None, response_key=None, **kwargs) -> list:
         """Returns an instance for each object
 
+        :param fnc_name:
+        :param response_key:
         :param kwargs:
         :return: list<cls()>
         """
+        service_list = kwargs.pop('service_list', [])
+
+        for boto3_def, fnc_kwargs in [(cls._boto3_list_def, 'list_kwargs'),
+                                      (cls._boto3_describe_def, 'describe_kwargs')]:
+            boto3_params = boto3_def['call_params']
+            kwargs[fnc_kwargs] = {}
+            for param_name, param_attrs in boto3_params.items():
+                value_list = [getattr(service, param_name, None) for service in service_list]
+                value_list = [v for v in value_list if v] + list(kwargs.get(param_name, []))
+                for value in value_list:
+                    if value:
+                        if param_attrs['type'] == list:
+                            value = value if isinstance(value, list) else [value]
+                            param_val = kwargs.get(param_attrs['name'], []) + value
+                            kwargs[param_attrs['name']] = param_val
+                            kwargs[fnc_kwargs][param_attrs['name']] = param_val
+                        else:
+                            kwargs[param_attrs['name']] = param_val
+                            kwargs[fnc_kwargs][param_attrs['name']] = param_val
+
+        if fnc_name and response_key:
+            kwargs = {snake_to_camelback(k): v for k, v in kwargs.items()}
+            client = cls._client.get(cls.boto3_service_name)
+            boto3_fnc = getattr(client, fnc_name)
+            response = paginated_search(boto3_fnc, kwargs, response_key)
+            return [cls(_loaded=True, **obj) for obj in response]
+
         return await cls._list(**kwargs)
 
     @classmethod
@@ -303,3 +371,68 @@ class BaseService(BaseAWS):
             return await filter_obj.run(service_objects)
         else:
             return service_objects
+
+
+class PaginatedBaseService(BaseService):
+
+    @classmethod
+    async def _list(cls,
+                    **kwargs) -> list:
+        """Returns an instance for each object
+        JMESPath for filtering: https://jmespath.org
+        :param kwargs:
+        :return: list<cls()>
+        """
+        kwargs = {snake_to_camelback(k): v for k, v in kwargs.pop('describe_kwargs', {}).items()}
+        response_key = cls._boto3_describe_def.get('response_key', f'{cls.client_id}s')
+        fnc_base = camel_to_snake(cls.client_id)
+        fnc_name = cls._boto3_describe_def.get('client_call', f'describe_{fnc_base}s')
+
+        client = cls._client.get(cls.boto3_service_name)
+        boto3_fnc = getattr(client, fnc_name)
+        response = paginated_search(boto3_fnc, kwargs, response_key)
+        return [cls(_loaded=True, **obj) for obj in response]
+
+
+class ServiceDescriptor:
+
+    def __init__(self, service_class: BaseService, name: str):
+        self.name = name
+        self._service_class = service_class
+        self.service = None
+
+    def _is_loaded(self):
+        if self._is_list():
+            return all(svc.loaded for svc in self.service)
+        else:
+            return self.service.loaded
+
+    def _is_list(self) -> bool:
+        return isinstance(self.service, list)
+
+    async def load(self):
+        if self.service:
+            if self._is_list() and not self._is_loaded():
+                self.service = await self._service_class.list(service_list=self.service)
+            elif not self._is_loaded():
+                await self.service.load()
+        return self.service
+
+    def __set__(self, obj, value) -> None:
+        if isinstance(value, list) and all(isinstance(elem_val, self._service_class) for elem_val in value):
+            self.service = value
+        elif not isinstance(value, list) and isinstance(value, self._service_class):
+            self.service = value
+        else:
+            raise ValueError(f'{value} != (list<{self.service_class}> || {self.service_class})')
+
+    def __getattr__(self, value):
+        res = getattr(self.service, value, None)
+        return res
+
+    def __iter__(self):
+        if isinstance(self.service, list):
+            yield from self.service
+        else:
+            raise TypeError(f"{self.service} is not iterable")
+
