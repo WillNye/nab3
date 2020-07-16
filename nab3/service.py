@@ -4,7 +4,7 @@ import logging
 from itertools import chain
 from datetime import datetime as dt, timedelta
 
-from nab3.base import BaseService
+from nab3.base import BaseService, PaginatedBaseService
 from nab3.utils import paginated_search, snake_to_camelcap
 
 LOGGER = logging.getLogger('nab3')
@@ -111,6 +111,15 @@ class AutoScalePolicy(BaseService):
     """
     boto3_service_name = 'autoscaling'
     client_id = 'Policy'
+    _boto3_describe_def = dict(
+        client_call='describe_policies',
+        call_params=dict(
+            asg_name=dict(name='AutoScalingGroupName', type=str),
+            name=dict(name='PolicyNames', type=list),
+            type=dict(name='PolicyTypes', type=list)
+        ),
+        response_key='ScalingPolicies'
+    )
 
     def get_alerts(self, start_date, end_date, item_type=None, alarm_types=[], sort_desc=True):
         """
@@ -130,25 +139,25 @@ class AutoScalePolicy(BaseService):
 
         return alerts
 
-    async def _load(self):
-        response = self.client.describe_policies(
-            PolicyNames=[self.name]
-        )['ScalingPolicies']
-        if response:
-            for k, v in response[0].items():
-                self._set_attr(k, v)
-
-        return self
-
-    @classmethod
-    async def list(cls, asg_name=None, policy_names=[], policy_types=[]):
-        search_kwargs = dict(PolicyNames=policy_names, PolicyTypes=policy_types)
-        if asg_name:
-            search_kwargs['AutoScalingGroupName'] = asg_name
-
-        search_fnc = cls._client.get(cls.boto3_service_name).describe_policies
-        results = paginated_search(search_fnc, search_kwargs, 'ScalingPolicies')
-        return [cls(_loaded=True, **result) for result in results]
+    # async def _load(self):
+    #     response = self.client.describe_policies(
+    #         PolicyNames=[self.name]
+    #     )['ScalingPolicies']
+    #     if response:
+    #         for k, v in response[0].items():
+    #             self._set_attr(k, v)
+    #
+    #     return self
+    #
+    # @classmethod
+    # async def list(cls, asg_name=None, policy_names=[], policy_types=[]):
+    #     search_kwargs = dict(PolicyNames=policy_names, PolicyTypes=policy_types)
+    #     if asg_name:
+    #         search_kwargs['AutoScalingGroupName'] = asg_name
+    #
+    #     search_fnc = cls._client.get(cls.boto3_service_name).describe_policies
+    #     results = paginated_search(search_fnc, search_kwargs, 'ScalingPolicies')
+    #     return [cls(_loaded=True, **result) for result in results]
 
 
 class AppAutoScalePolicy(BaseService):
@@ -223,66 +232,35 @@ class BaseAppService(BaseService):
 
 
 class BaseAutoScaleService(BaseService):
-    _auto_scale_policies: list = False
 
-    @property
-    async def scaling_policies(self):
-        if self._auto_scale_policies is False:
-            asp = self._get_service_class('scaling_policy')
-            asp_list = await asp.list(self.name)
-            self._auto_scale_policies = asp_list
-        return self._auto_scale_policies
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.create_service_field('scaling_policies', 'scaling_policy')
 
-    @scaling_policies.setter
-    def scaling_policies(self, policy_list):
-        class_type = self._get_service_class('scaling_policy')
-        if isinstance(policy_list, list) and all(isinstance(policy, class_type) for policy in policy_list):
-            self._auto_scale_policies = policy_list
-        else:
-            raise ValueError(f'{policy_list} != list<{class_type}>')
+    async def load_scaling_policies(self):
+        if not self.scaling_policies.loaded:
+            await self.scaling_policies.list(self.name)
 
 
 class BaseSecurityGroupService(BaseService):
-    _accessible_resources = False
-    _security_groups = False
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.create_service_field('accessible_resources', 'security_group')
+        self.create_service_field('security_groups', 'security_group')
 
-    @property
-    async def accessible_resources(self):
-        if self._accessible_resources is False:
-            filter_list = [sg.id for sg in await self.security_groups]
+    async def load_accessible_resources(self):
+        if not self.accessible_resources.loaded:
+            filter_list = [sg.id for sg in self.security_groups]
             if not filter_list:
-                self._accessible_resources = []
-                return self._accessible_resources
+                return self.accessible_resources
 
             instance_obj = self._get_service_class('security_group')
-            self._accessible_resources = await instance_obj.list(Filters=[dict(
+            self.accessible_resources = await instance_obj.list(Filters=[dict(
                 Name='ip-permission.group-id',
                 Values=filter_list
             )])
 
-        return self._accessible_resources
-
-    @accessible_resources.setter
-    def accessible_resources(self, sg_list):
-        class_type = self._get_service_class('security_group')
-        if isinstance(sg_list, list) and all(isinstance(sg, class_type) for sg in sg_list):
-            self._accessible_resources = sg_list
-        else:
-            raise ValueError(f'{sg_list} != list<{class_type}>')
-
-    @property
-    async def security_groups(self):
-        if self._security_groups is False:
-            await self.load()
-        return self._security_groups
-
-    @security_groups.setter
-    def security_groups(self, sg_list):
-        class_type = self._get_service_class('security_group')
-        if isinstance(sg_list, list) and all(isinstance(sg, class_type) for sg in sg_list):
-            self._security_groups = sg_list
-        else:
-            raise ValueError(f'{sg_list} != list<{class_type}>')
+        return self.accessible_resources
 
 
 class MetricService(BaseService):
@@ -344,53 +322,22 @@ class MetricService(BaseService):
         raise NotImplementedError
 
 
-class SecurityGroup(BaseService):
+class SecurityGroup(PaginatedBaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_security_groups
     """
     boto3_service_name = 'ec2'
     client_id = 'SecurityGroup'
     key_prefix = 'Group'
-    _service_list_map = dict(user_id_group_pairs='security_group')
     _accessible_sg = False
-
-    async def _load(self):
-        group_id = getattr(self, 'id', None)
-        group_name = getattr(self, 'name', None)
-        if not group_id and not group_name:
-            raise AttributeError('id or name must be set for load to be called')
-
-        group_names = [group_name] if group_name else []
-        group_ids = [group_id] if group_id else []
-        response = self.client.describe_security_groups(
-            GroupIds=group_ids,
-            GroupNames=group_names
-        )[f'{self.client_id}s']
-        if response:
-            for k, v in response[0].items():
-                self._set_attr(k, v)
-
-        return self
-
-    @classmethod
-    async def get(cls, sg_id=None, sg_name=None):
-        """
-        :param sg_id:
-        :param sg_name:
-        :return: SecurityGroup()
-        """
-        obj = cls(id=sg_id, name=sg_name)
-        return await obj.load()
-
-    @classmethod
-    async def list(cls, **kwargs):
-        """
-        :param kwargs:
-        :return:
-        """
-        client = cls._client.get(cls.boto3_service_name)
-        response = paginated_search(client.describe_security_groups, kwargs, f"{cls.client_id}s")
-        return [cls(_loaded=True, **obj) for obj in response]
+    _boto3_describe_def = dict(
+        client_call="describe_security_groups",
+        call_params=dict(
+            id=dict(name='GroupIds', type=list),
+            name=dict(name='GroupNames', type=list),
+        )
+    )
+    _response_alias = dict(user_id_group_pairs='security_group')
 
 
 class LaunchConfiguration(BaseService):
@@ -399,6 +346,11 @@ class LaunchConfiguration(BaseService):
     """
     boto3_service_name = 'autoscaling'
     client_id = 'LaunchConfiguration'
+    _boto3_describe_def = dict(
+        call_params=dict(
+            name=dict(name='LaunchConfigurationNames', type=list),
+        )
+    )
 
     async def _load(self):
         response = self.client.describe_launch_configurations(
@@ -491,58 +443,25 @@ class EC2Instance(BaseService):
         return self
 
 
-class ASG(BaseSecurityGroupService, BaseAutoScaleService):
+class ASG(PaginatedBaseService, BaseSecurityGroupService, BaseAutoScaleService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/autoscaling.html#AutoScaling.Client.describe_launch_configurations
     """
     boto3_service_name = 'autoscaling'
     client_id = 'AutoScalingGroup'
-    _load_balancers = []
-
-    async def _load(self):
-        response = self.client.describe_auto_scaling_groups(
-            AutoScalingGroupNames=[self.name]
-        )[f'{self.client_id}s']
-        if response:
-            for k, v in response[0].items():
-                self._set_attr(k, v)
-
-        return self
+    _boto3_describe_def = dict(
+        call_params=dict(
+            name=dict(name='AutoScalingGroupNames', type=list),
+        )
+    )
 
     @property
-    async def security_groups(self):
-        if self._security_groups is False:
-            try:
-                l_config = await self.launch_configuration.load()
-                sg_ids = [sg.id for sg in l_config.security_groups]
-                sg_class = self._get_service_class('security_group')
-                self._security_groups = l_config.security_groups = await sg_class.list(GroupIds=sg_ids)
-            except AttributeError:
-                self._security_groups = []
-        return self._security_groups
-
-    @property
-    async def load_balancers(self):
-        return self._load_balancers
-
-    @load_balancers.setter
-    def load_balancers(self, lb_list):
-        lb_v2 = self._get_service_class('load_balancer')
-        lb_classic = self._get_service_class('load_balancer_classic')
-        if isinstance(lb_list, list) and all(isinstance(lb, lb_v2) or isinstance(lb, lb_classic)for lb in lb_list):
-            self._load_balancers = lb_list
+    def security_groups(self) -> list:
+        launch_config = getattr(self, 'launch_configuration', None)
+        if launch_config:
+            return launch_config.security_groups
         else:
-            raise ValueError(f'{lb_list} != list<{lb_v2} | {lb_classic}>')
-
-    @classmethod
-    async def _list(cls, **kwargs):
-        """
-        :param kwargs:
-        :return:
-        """
-        client = cls._client.get(cls.boto3_service_name)
-        response = paginated_search(client.describe_auto_scaling_groups, kwargs, f"{cls.client_id}s")
-        return [cls(_loaded=True, **obj) for obj in response]
+            return []
 
     @classmethod
     async def get(cls, instance_id=None, **kwargs):
@@ -698,7 +617,7 @@ class ECSInstance(BaseService):
         return await cls._list(describe_kwargs=dict(cluster=cluster_name), **kwargs)
 
 
-class ECSCluster(BaseAutoScaleService, MetricService):
+class ECSCluster(MetricService):
     boto3_service_name = 'ecs'
     client_id = 'cluster'
     _asg = False
