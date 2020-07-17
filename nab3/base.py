@@ -2,6 +2,7 @@ import asyncio
 import copy
 import sys
 from itertools import chain
+from collections import defaultdict
 
 import boto3
 import botocore
@@ -210,7 +211,7 @@ class BaseService(BaseAWS):
             AttributeError(obj_key, normalized_output[obj_key])
 
     def create_service_field(self, field_name, service_class):
-        if isinstance(getattr(self, field_name, None), type(None)):
+        if getattr(self, field_name, None) is None:
             service_class = self._get_service_class(service_class)
             setattr(type(self), field_name, ServiceDescriptor(service_class, field_name))
 
@@ -266,6 +267,47 @@ class BaseService(BaseAWS):
             return await self._load(**kwargs)
         else:
             return self
+
+    async def fetch(self, *args):
+        async def _fetch(svc_name, svc_fetch_args):
+            svc_obj = getattr(self, svc_name, None)
+            if not svc_obj:
+                # This is expected not all AWS resources have every property defined
+                #   e.g. An ASG may not have an EC2 instance if desired = 0 and min = 0
+                return svc_obj
+            return await svc_obj.fetch(svc_fetch_args)
+
+        async_loads = defaultdict(list)
+        custom_load_methods = []
+
+        if not self.loaded:
+            return await self.load()
+
+        for arg in args:
+            custom_load_method = getattr(self, f'load_{arg}', None)
+            if custom_load_method:
+                custom_load_methods.append(custom_load_method)
+                continue
+            elif any(sub_arg.startswith(f'{arg}__') for sub_arg in args):
+                continue
+
+            arg_split = arg.split('__')
+            cls_attr = arg_split[0]
+            attr_args = '' if len(arg_split) == 1 else '__'.join(arg_split[1:])
+            async_loads[cls_attr].append(attr_args)
+
+        await asyncio.gather(*[_fetch(attr_svc, attr_svc_args) for attr_svc, attr_svc_args in async_loads.items()])
+
+        # Custom load methods exist as a way to create a reference to an AWS resource that isn't returned in the client
+        # An example of this would be the ASG pulls security groups from its launch config
+        #   The ASG property 'accessible_resources' is generated using the security groups
+        #   These properties are populated using a load_${attribute_name} method defined within the class or parent
+        #   These methods are not thread safe because, in following with this example:
+        #       load_accessible_resources calls load_accessible_resources which calls load_config.load
+        for custom_load_method in custom_load_methods:
+            await custom_load_method()
+
+        return self
 
     @classmethod
     async def get(cls, **kwargs):
@@ -398,11 +440,13 @@ class ServiceDescriptor:
 
     def __init__(self, service_class: BaseService, name: str):
         self.name = name
-        self._service_class = service_class
+        self.service_class = service_class
         self.service = None
 
-    def _is_loaded(self):
-        if self._is_list():
+    def is_loaded(self):
+        if self.service is None:
+            return False
+        elif self._is_list():
             return all(svc.loaded for svc in self.service)
         else:
             return self.service.loaded
@@ -412,27 +456,30 @@ class ServiceDescriptor:
 
     async def load(self):
         if self.service:
-            if self._is_list() and not self._is_loaded():
-                self.service = await self._service_class.list(service_list=self.service)
-            elif not self._is_loaded():
+            if self._is_list() and not self.is_loaded():
+                self.service = await self.service_class.list(service_list=self.service)
+            elif not self.is_loaded():
                 await self.service.load()
         return self.service
 
     def __set__(self, obj, value) -> None:
-        if isinstance(value, list) and all(isinstance(elem_val, self._service_class) for elem_val in value):
+        if isinstance(value, list) and all(isinstance(elem_val, self.service_class) for elem_val in value):
             self.service = value
-        elif not isinstance(value, list) and isinstance(value, self._service_class):
+        elif not isinstance(value, list) and isinstance(value, self.service_class):
             self.service = value
         else:
             raise ValueError(f'{value} != (list<{self.service_class}> || {self.service_class})')
 
     def __getattr__(self, value):
-        res = getattr(self.service, value, None)
-        return res
+        if self.service is None and value is 'loaded':
+            return False
+        return getattr(self.service, value, None)
 
     def __iter__(self):
         if isinstance(self.service, list):
             yield from self.service
+        elif self.service is None or not self.is_loaded():
+            yield from []
         else:
             raise TypeError(f"{self.service} is not iterable")
 
