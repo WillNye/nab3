@@ -415,12 +415,19 @@ class LoadBalancerClassic(BaseSecurityGroupService, BaseService):
         return [cls(_loaded=True, **obj) for obj in response]
 
 
-class EC2Instance(BaseService):
+class EC2Instance(PaginatedBaseService):
     boto3_service_name = 'ec2'
     client_id = 'Instance'
+    _boto3_describe_def = dict(
+        call_params=dict(
+            asg_name=dict(name='AutoScalingGroupName', type=str),
+            name=dict(name='PolicyNames', type=list),
+            type=dict(name='PolicyTypes', type=list)
+        )
+    )
 
     @classmethod
-    async def _list(cls, instance_ids=[], filters=[]) -> list:
+    async def _list(cls, filters=[], instance_ids=[], **kwargs) -> list:
         """
         boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_instances
 
@@ -428,18 +435,21 @@ class EC2Instance(BaseService):
         :param filters: list<dict> Available filter options available in the boto3 link above
         :return:
         """
-        search_fnc = cls._client.get(cls.boto3_service_name).describe_instances
         search_kwargs = dict(Filters=filters, InstanceIds=instance_ids)
+        search_fnc = cls._client.get(cls.boto3_service_name).describe_instances
         results = paginated_search(search_fnc, search_kwargs, 'Reservations')
-        instances = list(chain.from_iterable([obj['Instances']] for obj in results))
+        instances = list(chain.from_iterable([obj['Instances'] for obj in results]))
         return [cls(_loaded=True, **result) for result in instances]
 
     async def _load(self):
         response = self.client.describe_instances(InstanceIds=[self.id])
         response = response.get('Reservations', [])
         if response:
-            for k, v in response[0].get('Instances', {})[0].items():
-                self._set_attr(k, v)
+            if len(response) == 1:
+                for k, v in response[0].get('Instances', {})[0].items():
+                    self._set_attr(k, v)
+            else:
+                raise ValueError('Response was not unique')
 
         return self
 

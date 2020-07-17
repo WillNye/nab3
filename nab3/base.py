@@ -271,17 +271,24 @@ class BaseService(BaseAWS):
     async def fetch(self, *args):
         async def _fetch(svc_name, svc_fetch_args):
             svc_obj = getattr(self, svc_name, None)
+            svc_fetch_args = [arg for arg in svc_fetch_args if arg]
             if not svc_obj:
                 # This is expected not all AWS resources have every property defined
                 #   e.g. An ASG may not have an EC2 instance if desired = 0 and min = 0
                 return svc_obj
-            return await svc_obj.fetch(svc_fetch_args)
+
+            if svc_fetch_args:
+                loaded_obj = await svc_obj.fetch(*svc_fetch_args)
+            else:
+                loaded_obj = await svc_obj.load()
+
+            setattr(self, svc_name, loaded_obj)
 
         async_loads = defaultdict(list)
         custom_load_methods = []
 
         if not self.loaded:
-            return await self.load()
+            await self.load()
 
         for arg in args:
             custom_load_method = getattr(self, f'load_{arg}', None)
@@ -293,7 +300,8 @@ class BaseService(BaseAWS):
 
             arg_split = arg.split('__')
             cls_attr = arg_split[0]
-            attr_args = '' if len(arg_split) == 1 else '__'.join(arg_split[1:])
+            attr_args = None if len(arg_split) == 1 else '__'.join(arg_split[1:])
+
             async_loads[cls_attr].append(attr_args)
 
         await asyncio.gather(*[_fetch(attr_svc, attr_svc_args) for attr_svc, attr_svc_args in async_loads.items()])
@@ -329,21 +337,6 @@ class BaseService(BaseAWS):
         client = cls._client.get(cls.boto3_service_name)
         list_fnc = getattr(client, cls._boto3_list_def.get('client_call', f'list_{fnc_base}s'))
         describe_fnc = getattr(client, cls._boto3_describe_def.get('client_call', f'describe_{fnc_base}s'))
-
-        """
-        
-        describe_fnc = getattr(self.client, self._boto3_describe_def['client_call'])
-        call_params = dict()
-        for param_name, param_attrs in self._boto3_describe_def['call_params'].items():
-            value = kwargs.get(param_name, getattr(self, param_name, None))
-            if value:
-                call_params[param_attrs['name']] = param_attrs['type'](value)
-
-        if not call_params:
-            raise AttributeError(f'No valid parameters provided. {self._boto3_describe_def["call_params"].keys()}')
-
-        response = describe_fnc(**call_params)[self._boto3_describe_def.get('response_key', f'{self.client_id}s')]
-        """
         list_key = cls._boto3_list_def.get('response_key', f'{cls.client_id}Arns')
         describe_key = cls._boto3_describe_def.get('response_key', f'{cls.client_id}s')
         describe_kwargs = {snake_to_camelback(k): v for k, v in kwargs.pop('describe_kwargs').items()}
@@ -418,8 +411,7 @@ class BaseService(BaseAWS):
 class PaginatedBaseService(BaseService):
 
     @classmethod
-    async def _list(cls,
-                    **kwargs) -> list:
+    async def _list(cls, **kwargs) -> list:
         """Returns an instance for each object
         JMESPath for filtering: https://jmespath.org
         :param kwargs:
