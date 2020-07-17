@@ -249,16 +249,17 @@ class BaseSecurityGroupService(BaseService):
         self.create_service_field('security_groups', 'security_group')
 
     async def load_accessible_resources(self):
-        if not self.accessible_resources.loaded:
-            filter_list = [sg.id for sg in self.security_groups]
-            if not filter_list:
-                return self.accessible_resources
+        if not self.security_groups.loaded:
+            await self.security_groups.load()
 
-            instance_obj = self._get_service_class('security_group')
-            self.accessible_resources = await instance_obj.list(Filters=[dict(
-                Name='ip-permission.group-id',
-                Values=filter_list
-            )])
+        filter_list = [sg.id for sg in self.security_groups]
+        if not filter_list:
+            return self.accessible_resources
+
+        self.accessible_resources = await self.accessible_resources.service_class.list(Filters=[dict(
+            Name='ip-permission.group-id',
+            Values=filter_list
+        )])
 
         return self.accessible_resources
 
@@ -454,6 +455,30 @@ class ASG(PaginatedBaseService, BaseSecurityGroupService, BaseAutoScaleService):
             name=dict(name='AutoScalingGroupNames', type=list),
         )
     )
+
+    async def load_accessible_resources(self):
+        if self.accessible_resources.loaded:
+            return self.accessible_resources
+
+        launch_config = getattr(self, 'launch_configuration', None)
+        if launch_config is None:
+            return self.accessible_resources
+        elif not launch_config.loaded:
+            await launch_config.load()
+
+        if not launch_config.security_groups.loaded:
+            await launch_config.security_groups.load()
+
+            filter_list = [sg.id for sg in launch_config.security_groups]
+            if not filter_list:
+                return self.accessible_resources
+
+            self.accessible_resources = await self.accessible_resources.service_class.list(Filters=[dict(
+                Name='ip-permission.group-id',
+                Values=filter_list
+            )])
+
+        return self.accessible_resources
 
     @property
     def security_groups(self) -> list:
