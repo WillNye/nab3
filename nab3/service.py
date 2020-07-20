@@ -249,8 +249,11 @@ class BaseSecurityGroupService(BaseService):
         self.create_service_field('security_groups', 'security_group')
 
     async def load_accessible_resources(self):
+        if self.accessible_resources.loaded:
+            return self.accessible_resources
+
         if not self.security_groups.loaded:
-            await self.security_groups.load()
+            await self.fetch('security_groups')
 
         filter_list = [sg.id for sg in self.security_groups]
         if not filter_list:
@@ -466,37 +469,20 @@ class ASG(PaginatedBaseService, BaseSecurityGroupService, BaseAutoScaleService):
         )
     )
 
-    async def load_accessible_resources(self):
-        if self.accessible_resources.loaded:
-            return self.accessible_resources
+    async def load_security_groups(self):
+        if self.security_groups.loaded:
+            return self.security_groups
 
         launch_config = getattr(self, 'launch_configuration', None)
         if launch_config is None:
-            return self.accessible_resources
+            return self.security_groups
         elif not launch_config.loaded:
             await launch_config.load()
 
         if not launch_config.security_groups.loaded:
-            await launch_config.security_groups.load()
+            self.security_groups = await launch_config.security_groups.load()
 
-            filter_list = [sg.id for sg in launch_config.security_groups]
-            if not filter_list:
-                return self.accessible_resources
-
-            self.accessible_resources = await self.accessible_resources.service_class.list(Filters=[dict(
-                Name='ip-permission.group-id',
-                Values=filter_list
-            )])
-
-        return self.accessible_resources
-
-    @property
-    def security_groups(self) -> list:
-        launch_config = getattr(self, 'launch_configuration', None)
-        if launch_config:
-            return launch_config.security_groups
-        else:
-            return []
+        return self.security_groups
 
     @classmethod
     async def get(cls, instance_id=None, with_related=[], **kwargs):

@@ -301,7 +301,6 @@ class BaseService(BaseAWS):
             arg_split = arg.split('__')
             cls_attr = arg_split[0]
             attr_args = None if len(arg_split) == 1 else '__'.join(arg_split[1:])
-
             async_loads[cls_attr].append(attr_args)
 
         await asyncio.gather(*[_fetch(attr_svc, attr_svc_args) for attr_svc, attr_svc_args in async_loads.items()])
@@ -435,7 +434,7 @@ class PaginatedBaseService(BaseService):
 class ServiceDescriptor:
 
     def __init__(self, service_class: BaseService, name: str):
-        self.name = name
+        self._name = name
         self.service_class = service_class
         self.service = None
 
@@ -467,8 +466,8 @@ class ServiceDescriptor:
             raise ValueError(f'{value} != (list<{self.service_class}> || {self.service_class})')
 
     def __getattr__(self, value):
-        if self.service is None and value is 'loaded':
-            return False
+        if value is 'loaded':
+            return self.is_loaded()
         return getattr(self.service, value, None)
 
     def __iter__(self):
