@@ -499,9 +499,10 @@ class ASG(PaginatedBaseService, BaseSecurityGroupService, BaseAutoScaleService):
             return []
 
     @classmethod
-    async def get(cls, instance_id=None, **kwargs):
+    async def get(cls, instance_id=None, with_related=[], **kwargs):
         """Hits the client to set the entirety of the object using the provided lookup field.
         :param instance_id: An EC2 instance ID
+        :param with_related: list of related AWS resources to return
         :return:
         """
         if instance_id:
@@ -514,8 +515,12 @@ class ASG(PaginatedBaseService, BaseSecurityGroupService, BaseAutoScaleService):
                 kwargs['name'] = instance.get('AutoScalingGroupName')
             else:
                 raise ValueError(f'{instance_id} not found or does not belong to an auto scaling group')
+
         obj = cls(**kwargs)
-        return await obj.load()
+        await obj.load()
+        if with_related:
+            await obj.fetch(*with_related)
+        return obj
 
 
 class ECSTask(BaseService):

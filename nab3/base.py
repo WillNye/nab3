@@ -318,13 +318,17 @@ class BaseService(BaseAWS):
         return self
 
     @classmethod
-    async def get(cls, **kwargs):
+    async def get(cls, with_related=[], **kwargs):
         """Hits the client to set the entirety of the object using the provided lookup field.
 
+        :param with_related: list of related AWS resources to return
         :return:
         """
         obj = cls(**kwargs)
-        return await obj.load()
+        await obj.load()
+        if with_related:
+            await obj.fetch(*with_related)
+        return obj
 
     @classmethod
     async def _list(cls, **kwargs) -> list:
