@@ -7,7 +7,7 @@ from collections import defaultdict
 import boto3
 import botocore
 
-from nab3.utils import describe, camel_to_snake, Filter, paginated_search, snake_to_camelback
+from nab3.utils import camel_to_snake, describe_resource, Filter, paginated_search, snake_to_camelback
 
 
 class ClientHandler:
@@ -227,7 +227,7 @@ class BaseService(BaseAWS):
                     param_val = kwargs.get(param_attrs['name'], []) + value
                     call_params[param_attrs['name']] = param_val
                 else:
-                    call_params[param_attrs['name']] = param_val
+                    call_params[param_attrs['name']] = kwargs.get(param_attrs['name'])
 
         if not call_params:
             raise AttributeError(f'No valid parameters provided. {self._boto3_describe_def["call_params"].keys()}')
@@ -349,7 +349,7 @@ class BaseService(BaseAWS):
             return results
 
         chunk_size = describe_kwargs.pop('chunk_size', 25)
-        loaded_results = await describe(
+        loaded_results = await describe_resource(
             describe_fnc, id_key=describe_key, id_list=results, search_kwargs=describe_kwargs, chunk_size=chunk_size
         )
         response = list(chain.from_iterable([lr.get(describe_key) for lr in loaded_results]))
@@ -372,7 +372,10 @@ class BaseService(BaseAWS):
             kwargs[fnc_kwargs] = {}
             for param_name, param_attrs in boto3_params.items():
                 value_list = [getattr(service, param_name, None) for service in service_list]
-                value_list = [v for v in value_list if v] + list(kwargs.get(param_name, []))
+                value_list = [v for v in value_list if v]
+                kwarg_val = kwargs.get(param_name, [])
+                value_list += kwarg_val if isinstance(kwarg_val, list) else [kwarg_val]
+
                 for value in value_list:
                     if value:
                         if param_attrs['type'] == list:
@@ -381,8 +384,8 @@ class BaseService(BaseAWS):
                             kwargs[param_attrs['name']] = param_val
                             kwargs[fnc_kwargs][param_attrs['name']] = param_val
                         else:
-                            kwargs[param_attrs['name']] = param_val
-                            kwargs[fnc_kwargs][param_attrs['name']] = param_val
+                            kwargs[param_attrs['name']] = value
+                            kwargs[fnc_kwargs][param_attrs['name']] = value
 
         if fnc_name and response_key:
             kwargs = {snake_to_camelback(k): v for k, v in kwargs.items()}
@@ -458,6 +461,9 @@ class ServiceDescriptor:
         return self.service
 
     def __set__(self, obj, value) -> None:
+        if isinstance(value, ServiceDescriptor):
+            value = value.service
+
         if isinstance(value, list) and all(isinstance(elem_val, self.service_class) for elem_val in value):
             self.service = value
         elif not isinstance(value, list) and isinstance(value, self.service_class):
@@ -468,6 +474,10 @@ class ServiceDescriptor:
     def __getattr__(self, value):
         if value is 'loaded':
             return self.is_loaded()
+        elif value is 'load':
+            return self.load
+        elif self.service is None:
+            return getattr(self.service_class, value, None)
         return getattr(self.service, value, None)
 
     def __iter__(self):
@@ -477,4 +487,15 @@ class ServiceDescriptor:
             yield from []
         else:
             raise TypeError(f"{self.service} is not iterable")
+
+    def __len__(self):
+        if self.service is None:
+            return 0
+        elif isinstance(self.service, list):
+            return len(self.service)
+        else:
+            return 1
+
+    def __bool__(self):
+        return bool(self.is_loaded())
 
