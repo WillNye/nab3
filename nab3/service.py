@@ -1,4 +1,3 @@
-import asyncio
 import base64
 import logging
 from itertools import chain
@@ -11,227 +10,26 @@ LOGGER = logging.getLogger('nab3')
 LOGGER.setLevel(logging.WARNING)
 
 
-class Alarm(BaseService):
-    boto3_service_name = 'cloudwatch'
-    client_id = 'Alarm'
+class AppAutoScaleMixin:
 
-    @classmethod
-    def get_history(cls, start_date, end_date, name=None, item_type=None, alarm_types=[], sort_descending=True):
-        """
-        :param start_date: StartDate=datetime(2015, 1, 1)
-        :param end_date: EndDate=datetime(2015, 1, 1)
-        :param name: AlarmName='string'
-        :param item_type: HistoryItemType='ConfigurationUpdate'|'StateUpdate'|'Action'
-        :param alarm_types: AlarmTypes=['CompositeAlarm'|'MetricAlarm']
-        :param sort_descending: bool -> ScanBy='TimestampDescending'|'TimestampAscending'
-        :return:
-        """
-        search_kwargs = dict(StartDate=start_date, EndDate=end_date,
-                             AlarmTypes=alarm_types,
-                             ScanBy='TimestampDescending' if sort_descending else 'TimestampAscending')
-        if name:
-            search_kwargs['AlarmName'] = name
-        if item_type:
-            search_kwargs['HistoryItemType'] = item_type
-
-        search_fnc = cls._client.get(cls.boto3_service_name).describe_alarm_history
-        results = paginated_search(search_fnc, search_kwargs, 'AlarmHistoryItems')
-        return [cls(_loaded=True, **result) for result in results]
-
-
-class Metric(BaseService):
-    boto3_service_name = 'cloudwatch'
-    client_id = 'Metric'
-
-    @classmethod
-    def get_statistics(cls, namespace, metric_name, start_time, end_time, interval_as_seconds, **kwargs):
-        """
-        boto3.amazonaws.com/v1/documentation/api/latest/reference/services/cloudwatch.html#CloudWatch.Client.get_metric_statistics
-        docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/cloudwatch_concepts.html#dimension-combinations
-        Optional params:
-            Dimensions=[
-                {
-                    'Name': 'string',
-                    'Value': 'string'
-                },
-            ],
-            StartTime=datetime(2015, 1, 1),
-            EndTime=datetime(2015, 1, 1),
-            Period=123,
-            (Statistics=[
-                'SampleCount'|'Average'|'Sum'|'Minimum'|'Maximum',
-            ],
-            ExtendedStatistics=[
-                'string',
-            ]) - Statistics or ExtendedStatistics must be set ,
-            Unit='Seconds'|'Microseconds'|'Milliseconds'|'Bytes'|'Kilobytes'|'Megabytes'|'
-        :param namespace:
-        :param metric_name:
-        :param start_time:
-        :param end_time:
-        :param interval_as_seconds: This is the Period paremeter. Renamed here to make the purpose more intuitive
-        :param kwargs:
-        :return:
-        """
-        search_kwargs = dict(EndTime=end_time,
-                             Namespace=namespace,
-                             MetricName=metric_name,
-                             Period=interval_as_seconds,
-                             StartTime=start_time)
-        for k, v in kwargs.items():
-            search_kwargs[snake_to_camelcap(k)] = v
-
-        client = cls._client.get(cls.boto3_service_name)
-        response = client.get_metric_statistics(**search_kwargs)
-        return [cls(_loaded=True, **obj) for obj in response.get('Datapoints', [])]
-
-    @classmethod
-    def get(cls, **kwargs):
-        raise NotImplementedError("get is not a supported operation for Metric")
-
-    @classmethod
-    def load(cls, **kwargs):
-        raise NotImplementedError("load is not a supported operation for Metric")
-
-    @classmethod
-    async def list(cls, **kwargs) -> list:
-        """
-        boto3.amazonaws.com/v1/documentation/api/latest/reference/services/cloudwatch.html#CloudWatch.Client.list_metrics
-        :param kwargs:
-        :return:
-        """
-        client = cls._client.get(cls.boto3_service_name)
-        response = paginated_search(client.list_metrics, kwargs, f"{cls.client_id}s")
-        return [cls(_loaded=True, **obj) for obj in response]
-
-
-class AutoScalePolicy(BaseService):
-    """
-    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/autoscaling.html#AutoScaling.Client.describe_policies
-    """
-    boto3_service_name = 'autoscaling'
-    client_id = 'Policy'
-    _boto3_describe_def = dict(
-        client_call='describe_policies',
-        call_params=dict(
-            asg_name=dict(name='AutoScalingGroupName', type=str),
-            name=dict(name='PolicyNames', type=list),
-            type=dict(name='PolicyTypes', type=list)
-        ),
-        response_key='ScalingPolicies'
-    )
-
-    def get_alerts(self, start_date, end_date, item_type=None, alarm_types=[], sort_desc=True):
-        """
-        :param start_date: StartDate=datetime(2015, 1, 1)
-        :param end_date: EndDate=datetime(2015, 1, 1)
-        :param item_type: HistoryItemType='ConfigurationUpdate'|'StateUpdate'|'Action'
-        :param alarm_types: AlarmTypes=['CompositeAlarm'|'MetricAlarm']
-        :param sort_desc: bool -> ScanBy='TimestampDescending'|'TimestampAscending'
-        :return:
-        """
-        alerts = []
-        alert_obj = self._get_service_class('alarm')
-
-        for alert in self.alarms:
-            alerts += alert_obj.get_history(name=alert.name, start_date=start_date, end_date=end_date,
-                                            item_type=item_type, alarm_types=alarm_types, sort_descending=sort_desc)
-
-        return alerts
-
-    # async def _load(self):
-    #     response = self.client.describe_policies(
-    #         PolicyNames=[self.name]
-    #     )['ScalingPolicies']
-    #     if response:
-    #         for k, v in response[0].items():
-    #             self._set_attr(k, v)
-    #
-    #     return self
-    #
-    # @classmethod
-    # async def list(cls, asg_name=None, policy_names=[], policy_types=[]):
-    #     search_kwargs = dict(PolicyNames=policy_names, PolicyTypes=policy_types)
-    #     if asg_name:
-    #         search_kwargs['AutoScalingGroupName'] = asg_name
-    #
-    #     search_fnc = cls._client.get(cls.boto3_service_name).describe_policies
-    #     results = paginated_search(search_fnc, search_kwargs, 'ScalingPolicies')
-    #     return [cls(_loaded=True, **result) for result in results]
-
-
-class AppAutoScalePolicy(BaseService):
-    """
-    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/application-autoscaling.html#ApplicationAutoScaling.Client.describe_scaling_policies
-    """
-    boto3_service_name = 'application-autoscaling'
-    client_id = 'Policy'
-
-    def get_alerts(self, start_date, end_date, item_type=None, alarm_types=[], sort_desc=True):
-        """
-        :param start_date: StartDate=datetime(2015, 1, 1)
-        :param end_date: EndDate=datetime(2015, 1, 1)
-        :param item_type: HistoryItemType='ConfigurationUpdate'|'StateUpdate'|'Action'
-        :param alarm_types: AlarmTypes=['CompositeAlarm'|'MetricAlarm']
-        :param sort_desc: bool -> ScanBy='TimestampDescending'|'TimestampAscending'
-        :return:
-        """
-        alerts = []
-        alert_obj = self._get_service_class('alarm')
-
-        for alert in self.alarms:
-            alerts += alert_obj.get_history(name=alert.name, start_date=start_date, end_date=end_date,
-                                            item_type=item_type, alarm_types=alarm_types, sort_descending=sort_desc)
-
-        return alerts
-
-    async def _load(self):
-        response = self.client.describe_scaling_policies(
-            ServiceNamespace=self.service_namespace,
-            ResourceId=self.resource_id
-        )['ScalingPolicies']
-        if response:
-            for k, v in response[0].items():
-                self._set_attr(k, v)
-
-        return self
-
-    @classmethod
-    async def list(cls, service_namespace, resource_id=None):
-        search_kwargs = dict(ServiceNamespace=service_namespace)
-        if resource_id:
-            search_kwargs['ResourceId'] = resource_id
-
-        search_fnc = await cls._client.get(cls.boto3_service_name).describe_scaling_policies
-        results = paginated_search(search_fnc, search_kwargs, 'ScalingPolicies')
-        return await asyncio.gather(*[cls(_loaded=True, **result).load() for result in results])
-
-
-class BaseAppService(BaseService):
-    _auto_scale_policies: list = False
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.create_service_field('scaling_policies', 'app_scaling_policy')
 
     @property
     def resource_id(self):
         raise NotImplementedError
 
-    @property
-    async def scaling_policies(self):
-        if self._auto_scale_policies is False:
-            asp = self._get_service_class('app_scaling_policy')
-            asp_list = await asp.list(service_namespace=self.boto3_service_name, resource_id=self.resource_id)
-            self._auto_scale_policies = asp_list
-        return self._auto_scale_policies
+    async def load_scaling_policies(self):
+        if self.scaling_policies.loaded:
+            return self.scaling_policies
 
-    @scaling_policies.setter
-    def scaling_policies(self, policy_list):
-        class_type = self._get_service_class('app_scaling_policy')
-        if isinstance(policy_list, list) and all(isinstance(policy, class_type) for policy in policy_list):
-            self._auto_scale_policies = policy_list
-        else:
-            raise ValueError(f'{policy_list} != list<{class_type}>')
+        asp_list = await self.scaling_policies.list(resource_id=self.resource_id)
+        self.scaling_policies = asp_list
+        return self.scaling_policies
 
 
-class BaseAutoScaleService(BaseService):
+class AutoScaleMixin:
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -239,10 +37,10 @@ class BaseAutoScaleService(BaseService):
 
     async def load_scaling_policies(self):
         if not self.scaling_policies.loaded:
-            await self.scaling_policies.list(self.name)
+            self.scaling_policies = await self.scaling_policies.list(asg_name=self.name)
 
 
-class BaseSecurityGroupService(BaseService):
+class SecurityGroupMixin:
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.create_service_field('accessible_resources', 'security_group')
@@ -267,7 +65,7 @@ class BaseSecurityGroupService(BaseService):
         return self.accessible_resources
 
 
-class MetricService(BaseService):
+class MetricMixin:
     _available_metrics = False
 
     def get_statistics(self,
@@ -297,16 +95,14 @@ class MetricService(BaseService):
         )
         return metrics
 
-    @property
-    async def available_metrics(self):
+    async def get_available_metrics(self):
         if self._available_metrics is False:
             metrics = self._get_service_class('metric')
             metrics = await metrics.list(Namespace=self._stat_name, Dimensions=self._stat_dimensions)
             self._available_metrics = metrics
         return self._available_metrics
 
-    @property
-    async def metric_options(self):
+    async def get_metric_options(self):
         if self._available_metrics is False:
             metrics = self._get_service_class('metric')
             metrics = await metrics.list(Namespace=self._stat_name, Dimensions=self._stat_dimensions)
@@ -324,6 +120,186 @@ class MetricService(BaseService):
         :return:
         """
         raise NotImplementedError
+
+
+class Alarm(PaginatedBaseService):
+    boto3_service_name = 'cloudwatch'
+    client_id = 'Alarm'
+
+    @classmethod
+    def get_history(cls, start_date, end_date, name=None, item_type=None, alarm_types=[], sort_descending=True):
+        """
+        :param start_date: StartDate=datetime(2015, 1, 1)
+        :param end_date: EndDate=datetime(2015, 1, 1)
+        :param name: AlarmName='string'
+        :param item_type: HistoryItemType='ConfigurationUpdate StateUpdate Action'
+        :param alarm_types: AlarmTypes=['CompositeAlarm MetricAlarm']
+        :param sort_descending: bool -> ScanBy='TimestampDescending TimestampAscending'
+        :return:
+        """
+        search_kwargs = dict(StartDate=start_date, EndDate=end_date,
+                             AlarmTypes=alarm_types,
+                             ScanBy='TimestampDescending' if sort_descending else 'TimestampAscending')
+        if name:
+            search_kwargs['AlarmName'] = name
+        if item_type:
+            search_kwargs['HistoryItemType'] = item_type
+
+        search_fnc = cls._client.get(cls.boto3_service_name).describe_alarm_history
+        results = paginated_search(search_fnc, search_kwargs, 'AlarmHistoryItems')
+        return [cls(_loaded=True, **result) for result in results]
+
+
+class Metric(PaginatedBaseService):
+    """
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/cloudwatch.html#CloudWatch.Client.list_metrics
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/cloudwatch.html#CloudWatch.Client.get_metric_statistics
+    docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/cloudwatch_concepts.html#dimension-combinations
+    """
+    boto3_service_name = 'cloudwatch'
+    client_id = 'Metric'
+    _boto3_describe_def = dict(
+        client_call="list_metrics",
+        call_params=dict(
+            dimensions=dict(name='Dimensions', type=list),  # list<dict(Name=str, Value=str)>
+            name=dict(name='MetricName', type=str),
+            namespace=dict(name='Namespace', type=str),
+        )
+    )
+
+    @classmethod
+    def get_statistics(cls, namespace, metric_name, start_time, end_time, interval_as_seconds, **kwargs):
+        """
+        Optional params:
+            Dimensions=[
+                {
+                    'Name': 'string',
+                    'Value': 'string'
+                },
+            ],
+            StartTime=datetime(2015, 1, 1),
+            EndTime=datetime(2015, 1, 1),
+            Period=123,
+            (Statistics=[
+                'SampleCount Average Sum Minimum Maximum',
+            ],
+            ExtendedStatistics=[
+                'string',
+            ]) - Statistics or ExtendedStatistics must be set ,
+            Unit='Seconds Microseconds Milliseconds Bytes Kilobytes Megabytes 
+        :param namespace:
+        :param metric_name:
+        :param start_time:
+        :param end_time:
+        :param interval_as_seconds: This is the Period paremeter. Renamed here to make the purpose more intuitive
+        :param kwargs:
+        :return:
+        """
+        search_kwargs = dict(EndTime=end_time,
+                             Namespace=namespace,
+                             MetricName=metric_name,
+                             Period=interval_as_seconds,
+                             StartTime=start_time)
+        for k, v in kwargs.items():
+            search_kwargs[snake_to_camelcap(k)] = v
+
+        client = cls._client.get(cls.boto3_service_name)
+        response = client.get_metric_statistics(**search_kwargs)
+        return [cls(_loaded=True, **obj) for obj in response.get('Datapoints', [])]
+
+    @classmethod
+    def get(cls, **kwargs):
+        raise NotImplementedError("get is not a supported operation for Metric")
+
+    @classmethod
+    def load(cls, **kwargs):
+        raise NotImplementedError("load is not a supported operation for Metric")
+
+
+class AutoScalePolicy(PaginatedBaseService):
+    """
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/autoscaling.html#AutoScaling.Client.describe_policies
+    """
+    boto3_service_name = 'autoscaling'
+    client_id = 'Policy'
+    _boto3_describe_def = dict(
+        client_call='describe_policies',
+        call_params=dict(
+            asg_name=dict(name='AutoScalingGroupName', type=str),
+            name=dict(name='PolicyNames', type=list),
+            type=dict(name='PolicyTypes', type=list)
+        ),
+        response_key='ScalingPolicies'
+    )
+
+    def get_alerts(self, start_date, end_date, item_type=None, alarm_types=[], sort_desc=True):
+        """
+        :param start_date: StartDate=datetime(2015, 1, 1)
+        :param end_date: EndDate=datetime(2015, 1, 1)
+        :param item_type: HistoryItemType='ConfigurationUpdate StateUpdate Action'
+        :param alarm_types: AlarmTypes=['CompositeAlarm MetricAlarm']
+        :param sort_desc: bool -> ScanBy='TimestampDescending TimestampAscending'
+        :return:
+        """
+        alerts = []
+        alert_obj = self._get_service_class('alarm')
+
+        for alert in self.alarms:
+            alerts += alert_obj.get_history(name=alert.name, start_date=start_date, end_date=end_date,
+                                            item_type=item_type, alarm_types=alarm_types, sort_descending=sort_desc)
+
+        return alerts
+
+
+class AppAutoScalePolicy(PaginatedBaseService):
+    """
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/application-autoscaling.html#ApplicationAutoScaling.Client.describe_scaling_policies
+    
+    Scalable Dimension options:
+        ecs:service:DesiredCount
+        ec2:spot-fleet-request:TargetCapacity
+        elasticmapreduce:instancegroup:InstanceCount
+        appstream:fleet:DesiredCapacity
+        dynamodb:table:ReadCapacityUnits
+        dynamodb:table:WriteCapacityUnits
+        dynamodb:index:ReadCapacityUnits
+        dynamodb:index:WriteCapacityUnits
+        rds:cluster:ReadReplicaCount
+        sagemaker:variant:DesiredInstanceCount
+        custom-resource:ResourceType:Property c
+        omprehend:document-classifier-endpoint:DesiredInferenceUnits
+        lambda:function:ProvisionedConcurrency
+        cassandra:table:ReadCapacityUnits
+        cassandra:table:WriteCapacityUnits
+    """
+    boto3_service_name = 'application-autoscaling'
+    client_id = 'Policy'
+    _boto3_describe_def = dict(
+        client_call='describe_scaling_policies',
+        call_params=dict(
+            scalable_dimension=dict(name='ScalableDimension', type=str),
+            name=dict(name='PolicyNames', type=list),
+            resource_id=dict(name='ResourceId', type=str)
+        ),
+        response_key='ScalingPolicies'
+    )
+
+    def get_alerts(self, start_date, end_date, item_type=None, alarm_types=[], sort_desc=True):
+        """
+        :param start_date: StartDate=datetime(2015, 1, 1)
+        :param end_date: EndDate=datetime(2015, 1, 1)
+        :param item_type: HistoryItemType='ConfigurationUpdate StateUpdate Action'
+        :param alarm_types: AlarmTypes=['CompositeAlarm MetricAlarm']
+        :param sort_desc: bool -> ScanBy='TimestampDescending TimestampAscending'
+        :return:
+        """
+        alerts = []
+        alert_obj = self._get_service_class('alarm')
+        for alert in self.alarms:
+            alerts += alert_obj.get_history(name=alert.name, start_date=start_date, end_date=end_date,
+                                            item_type=item_type, alarm_types=alarm_types, sort_descending=sort_desc)
+
+        return alerts
 
 
 class SecurityGroup(PaginatedBaseService):
@@ -344,7 +320,7 @@ class SecurityGroup(PaginatedBaseService):
     _response_alias = dict(user_id_group_pairs='security_group')
 
 
-class LaunchConfiguration(BaseService):
+class LaunchConfiguration(PaginatedBaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/autoscaling.html#AutoScaling.Client.describe_launch_configurations
     """
@@ -355,84 +331,63 @@ class LaunchConfiguration(BaseService):
             name=dict(name='LaunchConfigurationNames', type=list),
         )
     )
+    _user_data = None
 
-    async def _load(self):
-        response = self.client.describe_launch_configurations(
-            LaunchConfigurationNames=[self.name],
-            MaxRecords=1
-        )[f'{self.client_id}s']
-        if response:
-            for k, v in response[0].items():
-                self._set_attr(k, v)
+    @property
+    def user_data(self):
+        return self._user_data
 
-            user_data = getattr(self, 'user_data', "")
-            self.user_data = base64.b64decode(self.user_data).decode("UTF-8") if user_data else user_data
-
-        return self
+    @user_data.setter
+    def user_data(self, user_data=None):
+        self._user_data = base64.b64decode(user_data).decode("UTF-8") if user_data else user_data
 
 
-class LoadBalancer(BaseSecurityGroupService, BaseService):
+class LoadBalancer(SecurityGroupMixin, BaseService):
+    """
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/elbv2.html#ElasticLoadBalancingv2.Client.describe_load_balancers
+    """
     boto3_service_name = 'elbv2'
     client_id = 'LoadBalancer'
+    _boto3_describe_def = dict(
+        call_params=dict(
+            arn=dict(name='LoadBalancerArns', type=list),  # list<str>
+            name=dict(name='Names', type=list),  # list<str>
+        )
+    )
+
+
+class LoadBalancerClassic(SecurityGroupMixin, BaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/elbv2.html#ElasticLoadBalancingv2.Client.describe_load_balancers
     """
-
-    @classmethod
-    async def list(cls, **kwargs):
-        """
-        :param asg_name: Name of an AutoScaling Group
-        :param kwargs:
-        :return:
-        """
-        client = cls._client.get(cls.boto3_service_name)
-        response = paginated_search(client.describe_load_balancers, kwargs, f"{cls.client_id}s")
-        return [cls(_loaded=True, **obj) for obj in response]
-
-
-class LoadBalancerClassic(BaseSecurityGroupService, BaseService):
     boto3_service_name = 'elb'
     client_id = 'LoadBalancer'
-    """
-    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/elbv2.html#ElasticLoadBalancingv2.Client.describe_load_balancers
-    """
-
-    async def _load(self):
-        response = self.client.describe_load_balancers(
-            LoadBalancerNames=[self.name]
-        )['LoadBalancerDescriptions']
-        if response:
-            for k, v in response[0].items():
-                self._set_attr(k, v)
-
-        return self
-
-    @classmethod
-    async def list(cls, **kwargs):
-        """
-        :param kwargs:
-        :return:
-        """
-        client = cls._client.get(cls.boto3_service_name)
-        response = paginated_search(client.describe_load_balancers, kwargs, f"LoadBalancerDescriptions")
-        return [cls(_loaded=True, **obj) for obj in response]
+    _boto3_describe_def = dict(
+        client_call='describe_load_balancers',
+        call_params=dict(
+            name=dict(name='LoadBalancerNames', type=list)  # list<str>
+        ),
+        response_key='LoadBalancerDescriptions'
+    )
 
 
 class EC2Instance(PaginatedBaseService):
+    """
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_instances
+    """
     boto3_service_name = 'ec2'
     client_id = 'Instance'
     _boto3_describe_def = dict(
         call_params=dict(
-            asg_name=dict(name='AutoScalingGroupName', type=str),
-            name=dict(name='PolicyNames', type=list),
-            type=dict(name='PolicyTypes', type=list)
+            id=dict(name='InstanceIds', type=list),
+            filters=dict(name='Filters', type=list)  # list<dict(name=str, values=list<str>)>
         )
     )
 
     @classmethod
     async def _list(cls, filters=[], instance_ids=[], **kwargs) -> list:
         """
-        boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_instances
+
 
         :param instance_ids: list<str>
         :param filters: list<dict> Available filter options available in the boto3 link above
@@ -457,7 +412,7 @@ class EC2Instance(PaginatedBaseService):
         return self
 
 
-class ASG(PaginatedBaseService, BaseSecurityGroupService, BaseAutoScaleService):
+class ASG(SecurityGroupMixin, AutoScaleMixin, PaginatedBaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/autoscaling.html#AutoScaling.Client.describe_launch_configurations
     """
@@ -479,9 +434,7 @@ class ASG(PaginatedBaseService, BaseSecurityGroupService, BaseAutoScaleService):
         elif not launch_config.loaded:
             await launch_config.load()
 
-        if not launch_config.security_groups.loaded:
-            self.security_groups = await launch_config.security_groups.load()
-
+        self.security_groups = await launch_config.fetch('security_groups')
         return self.security_groups
 
     @classmethod
@@ -510,65 +463,62 @@ class ASG(PaginatedBaseService, BaseSecurityGroupService, BaseAutoScaleService):
 
 
 class ECSTask(BaseService):
+    """
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.list_tasks
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.describe_tasks
+    """
     boto3_service_name = 'ecs'
     client_id = 'task'
-
-    async def _load(self):
-        response = self.client.describe_tasks(
-            cluster=self.cluster,
-            tasks=[self.id]
-        ).get(f'{self.client_id}s')
-        if response:
-            for k, v in response[0].items():
-                self._set_attr(k, v)
-
-        return self
-
-    @classmethod
-    async def get(cls, id, cluster_name):
-        """
-        :param cluster_name: string Name of the ECS Cluster the instance belongs to
-        :param id: string The task instance ID
-        :return:
-        """
-        return await cls(id=id, cluster=cluster_name).load()
-
-    @classmethod
-    async def _list(cls, cluster_name, **kwargs):
-        """
-        For list of accepted kwarg values:
-        https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.list_tasks
-            Both snake case as well as the exact key are accepted
-        :param cluster_name:
-        :param kwargs:
-        :return:
-        """
-        kwargs['cluster'] = cluster_name
-        return await cls.list(describe_kwargs=dict(cluster=cluster_name), **kwargs)
+    _boto3_describe_def = dict(
+        client_call="list_metrics",
+        call_params=dict(
+            cluster=dict(name='cluster', type=str),
+            id=dict(name='tasks', type=list),  # list<str>
+            include=dict(name='include', type=list),  # list<str>
+        )
+    )
+    _boto3_list_def = dict(
+        client_call="list_tasks",
+        call_params=dict(
+            cluster=dict(name='cluster', type=str),
+            container_instance=dict(name='containerInstance', type=str),
+            family=dict(name='family', type=str),
+            started_by=dict(name='startedBy', type=str),
+            service_name=dict(name='serviceName', type=str),
+            desired_status=dict(name='desiredStatus', type=str),
+            launch_type=dict(name='launchType', type=str),
+        )
+    )
 
 
-class ECSService(BaseAppService, MetricService):
+class ECSService(MetricMixin, AppAutoScaleMixin, BaseService):
+    """
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.list_services
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.describe_services
+    """
     boto3_service_name = 'ecs'
     client_id = 'service'
-    _cluster = False
+    _boto3_describe_def = dict(
+        call_params=dict(
+            cluster=dict(name='cluster', type=str),
+            name=dict(name='services', type=list),  # list<str>
+            include=dict(name='include', type=list),  # list<str> e.g. TAGS
+        )
+    )
+    _boto3_list_def = dict(
+        call_params=dict(
+            cluster=dict(name='cluster', type=str),
+            launch_type=dict(name='launchType', type=str),  # 'EC2'|'FARGATE'
+            scheduling_strategy=dict(name='schedulingStrategy', type=str)  # 'REPLICA'|'DAEMON'
+        )
+    )
 
-    async def _load(self):
-        response = self.client.describe_services(
-            cluster=self.cluster,
-            services=[self.name]
-        ).get(f'{self.client_id}s')
-        if response:
-            for k, v in response[0].items():
-                self._set_attr(k, v)
-
-        return self
-
-    @property
-    async def cluster(self):
-        if self._cluster is False:
-            await self.load()
-            self._cluster = self.cluster_arn.split('/')[-1]
-        return self._cluster
+    def __init__(self, **kwargs):
+        super(self._get_service_class('ecs_service'), self).__init__(**kwargs)
+        cluster_arn = kwargs.get('cluster_arn', None)
+        if cluster_arn:
+            self.cluster = cluster_arn.split('/')[-1]
+            delattr(self, 'cluster_arn')
 
     @property
     def resource_id(self):
@@ -582,135 +532,117 @@ class ECSService(BaseAppService, MetricService):
     def _stat_name(self) -> str:
         return 'AWS/ECS'
 
-    @classmethod
-    async def get(cls, name, cluster_name):
-        """
-        :param cluster_name: string Name of the ECS Cluster the instance belongs to
-        :param name: string The name of the service
-        :return:
-        """
-        return await cls(name=name, cluster=cluster_name).load()
-
-    @classmethod
-    async def list(cls, cluster_name, **kwargs):
-        """
-        For list of accepted kwarg values:
-        https://docs.aws.amazon.com/AmazonECS/latest/developerguide/cluster-query-language.html
-            Both snake case as well as the exact key are accepted
-        :param cluster_name:
-        :param kwargs:
-        :return:
-        """
-        kwargs['cluster'] = cluster_name
-        return await cls._list(describe_kwargs=dict(cluster=cluster_name), **kwargs)
-
 
 class ECSInstance(BaseService):
+    """
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.list_container_instances
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.describe_container_instances
+
+    For filter see docs.aws.amazon.com/AmazonECS/latest/developerguide/cluster-query-language.html but...
+        It appears to be client side so it's likely easier to use nab3.Filter
+
+    Valid status options:
+        ACTIVE
+        DRAINING
+        REGISTERING
+        DEREGISTERING
+        REGISTRATION_FAILED
+    """
     boto3_service_name = 'ecs'
     client_id = 'containerInstance'
-
-    async def _load(self):
-        response = self.client.describe_container_instances(
-            cluster=self.cluster,
-            containerInstances=[self.id]
-        ).get(f'{self.client_id}s')
-        if response:
-            for k, v in response[0].items():
-                self._set_attr(k, v)
-
-        return self
-
-    @classmethod
-    async def get(cls, id, cluster_name):
-        """
-        :param cluster_name: string Name of the ECS Cluster the instance belongs to
-        :param id: string The Container instance ID
-        :return:
-        """
-        return await cls(id=id, cluster=cluster_name).load()
-
-    @classmethod
-    async def list(cls, cluster_name, **kwargs):
-        """
-        For list of accepted kwarg values:
-        https://docs.aws.amazon.com/AmazonECS/latest/developerguide/cluster-query-language.html
-            Both snake case as well as the exact key are accepted
-        :param cluster_name:
-        :param kwargs:
-        :return:
-        """
-        kwargs['cluster'] = cluster_name
-        return await cls._list(describe_kwargs=dict(cluster=cluster_name), **kwargs)
+    _boto3_describe_def = dict(
+        call_params=dict(
+            cluster=dict(name='cluster', type=str),
+            id=dict(name='containerInstances', type=list),  # list<str>
+            include=dict(name='include', type=list),  # list<str> e.g. TAGS
+        )
+    )
+    _boto3_list_def = dict(
+        call_params=dict(
+            cluster=dict(name='cluster', type=str),
+            filter=dict(name='filter', type=str),  # 'EC2'|'FARGATE'
+            status=dict(name='status', type=str)
+        )
+    )
 
 
-class ECSCluster(MetricService):
+class ECSCluster(AutoScaleMixin, MetricMixin, BaseService):
+    """
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.list_clusters
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.describe_clusters
+    """
     boto3_service_name = 'ecs'
     client_id = 'cluster'
-    _asg = False
-    _instances = False
-    _services = False
+    _boto3_describe_def = dict(
+        call_params=dict(
+            name=dict(name='clusters', type=list),  # list<str>
+            include=dict(name='include', type=list),  # list<str> ATTACHMENTS'|'SETTINGS'|'STATISTICS'|'TAGS'
+        )
+    )
 
-    async def _load(self):
+    def __init__(self, **kwargs):
+        super(self._get_service_class('ecs_cluster'), self).__init__(**kwargs)
+        self.create_service_field('asg', 'asg')
+        self.create_service_field('instances', 'ecs_instance')
+        self.create_service_field('services', 'ecs_service')
+
+    async def load_asg(self):
         """
-        boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.describe_clusters
-        :param options: list<`ATTACHMENTS'|'SETTINGS'|'STATISTICS'|'TAGS'>
+
+        if self.scaling_policies.loaded:
+            return self.scaling_policies
+
+
+        if not self.security_groups.loaded:
+            await self.fetch('security_groups')
+
+        filter_list = [sg.id for sg in self.security_groups]
+        if not filter_list:
+            return self.accessible_resources
+
+        self.accessible_resources = await self.accessible_resources.service_class.list(Filters=[dict(
+            Name='ip-permission.group-id',
+            Values=filter_list
+        )])
+
+        return self.accessible_resources
+
         :return:
         """
-        response = self.client.describe_clusters(
-            clusters=[self.name],
-            include=self._options
-        )['clusters']
-        if response:
-            for k, v in response[0].items():
-                self._set_attr(k, v)
-        return self
+        if self.asg.loaded:
+            return self.asg
+        if not self.instances.loaded:
+            await self.fetch('instances')
 
-    @property
-    async def asg(self):
-        if self._asg is False:
-            container_instance = await self.instances
-            container_instance = container_instance[0]
-            asg_obj = self._get_service_class('asg')
-            self._asg = await asg_obj.get(instance_id=container_instance.ec2_instance_id)
-        return self._asg
+        container_instances = [instance for instance in self.instances]
+        if len(container_instances) > 0:
+            container_instance = container_instances[0]
+            self.asg = await self.asg.get(instance_id=container_instance.ec2_instance_id)
 
-    @asg.setter
-    def asg(self, asg):
-        class_type = self._get_service_class('ecs_asg')
-        if isinstance(asg, class_type):
-            self._asg = asg
-        else:
-            raise ValueError(f'{asg} != {class_type}')
+        return self.asg
 
-    @property
-    async def instances(self):
-        if self._instances is False:
-            instance_obj = self._get_service_class('ecs_instance')
-            self._instances = await instance_obj.list(self.name)
-        return self._instances
+    async def load_instances(self):
+        if self.instances.loaded:
+            return self.instances
+        self.instances = await self.instances.list(cluster=self.name)
+        return self.instances
 
-    @instances.setter
-    def instances(self, instance_list: list):
-        class_type = self._get_service_class('ecs_instance')
-        if isinstance(instance_list, list) and all(isinstance(instance, class_type) for instance in instance_list):
-            self._instances = instance_list
-        else:
-            raise ValueError(f'{instance_list} != list<{class_type}>')
+    async def load_services(self):
+        if self.services.loaded:
+            return self.services
+        self.services = await self.services.list(cluster=self.name)
+        return self.services
 
-    @property
-    async def services(self):
-        if self._services is False:
-            instance_obj = self._get_service_class('ecs_service')
-            self._services = await instance_obj.list(self.name)
-        return self._services
+    async def load_scaling_policies(self):
+        if self.scaling_policies.loaded:
+            return self.scaling_policies
+        if not self.asg.loaded:
+            await self.fetch('asg')
 
-    @services.setter
-    def services(self, services_list: list):
-        class_type = self._get_service_class('ecs_service')
-        if isinstance(services_list, list) and all(isinstance(svc, class_type) for svc in services_list):
-            self._services = services_list
-        else:
-            raise ValueError(f'{services_list} != list<{class_type}>')
+        if self.asg:
+            await self.asg.fetch('scaling_policies')
+            self.scaling_policies = self.asg.scaling_policies
+        return self.scaling_policies
 
     @property
     def _stat_dimensions(self) -> list:
@@ -719,12 +651,3 @@ class ECSCluster(MetricService):
     @property
     def _stat_name(self) -> str:
         return 'AWS/ECS'
-
-    @classmethod
-    async def get(cls, name, options=['ATTACHMENTS', 'STATISTICS', 'SETTINGS']):
-        """
-        :param name:
-        :param options: list<`ATTACHMENTS'|'SETTINGS'|'STATISTICS'|'TAGS'>
-        :return:
-        """
-        return await cls(name=name, _options=options).load()
