@@ -45,7 +45,7 @@ def paginated_search(search_fnc, search_kwargs: dict, response_key: str, max_res
             return results
 
 
-async def describe(search_fnc, id_key: str, id_list: list, search_kwargs: dict, chunk_size: int = 50):
+async def describe_resource(search_fnc, id_key: str, id_list: list, search_kwargs: dict, chunk_size: int = 50):
     async def _describe(chunked_list):
         return search_fnc(**{**{id_key: chunked_list}, **search_kwargs})
 
