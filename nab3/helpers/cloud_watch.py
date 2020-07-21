@@ -41,8 +41,7 @@ def md_statistics_summary(metric_obj_list: list, metric_name: str) -> str:
     return f"{md_output}\n#### {metric_name} Table:\n{generate_md_table_str(rows, headers)}"
 
 
-async def md_alerts(scalable_object, start_date=dt.now()-timedelta(days=30), end_date=dt.now()) -> str:
-    await scalable_object.load()
+def md_alerts(scalable_object, start_date=dt.now()-timedelta(days=30), end_date=dt.now()) -> str:
     md_output = ''
 
     if len(scalable_object.scaling_policies) == 0:
@@ -52,9 +51,8 @@ async def md_alerts(scalable_object, start_date=dt.now()-timedelta(days=30), end
     policy_summary = []
     headers = ['Policy', 'Alarm', 'Time']
     rows = []
-    policies = await scalable_object.scaling_policies
 
-    for asp in tqdm(policies):
+    for asp in tqdm(scalable_object.scaling_policies):
         alerts = asp.get_alerts(start_date=start_date, end_date=end_date, item_type='Action')
         policy_summary.append(f'{asp.name} - {len(alerts)}')
         rows += [[asp.name, alert.name, alert.timestamp] for alert in alerts]

@@ -2,12 +2,11 @@ from double_click.markdown import generate_md_bullet_str, generate_md_table_str
 from tqdm import tqdm
 
 
-async def md_security_group_table(sg_list: list, id_filter: list = []):
+def md_security_group_table(sg_list: list, id_filter: list = []):
     headers = ['Name', 'SG/CIDR', 'Rule Type', 'Protocol', 'From', 'To']
     rows = []
     sg_list = sg_list if len(sg_list) < 5 else tqdm(sg_list)
     for sg in sg_list:
-        await sg.load()
         for ip_permissions in [dict(rule='Ingress', permissions=sg.ip_permissions),
                                dict(rule='Egress', permissions=sg.ip_permissions_egress)]:
             for ip_perm in ip_permissions['permissions']:
@@ -20,7 +19,6 @@ async def md_security_group_table(sg_list: list, id_filter: list = []):
                         if user_group.id == sg.id:
                             name = f'Internal Rule - {sg.name}'
                         else:
-                            await user_group.load()
                             name = user_group.name
                     else:
                         continue
@@ -41,18 +39,15 @@ async def md_security_group_table(sg_list: list, id_filter: list = []):
         return generate_md_table_str(row_list=rows, headers=headers)
 
 
-async def md_autoscale_sgs(asg_object):
-    await asg_object.load()
-    security_groups = await asg_object.security_groups
-    security_groups = [sg for sg in security_groups if sg.name != 'unix-admin']
+def md_autoscale_sgs(asg_object):
+    security_groups = [sg for sg in asg_object.security_groups if sg.name != 'unix-admin']
     if not security_groups:
         return ""
 
     sg_names = [sg.id for sg in security_groups]
     md_output = f"### Security Groups:\n{generate_md_bullet_str(sg_names)}\n"
-    sg_table = await md_security_group_table(security_groups)
-    accessible_resources = await asg_object.accessible_resources
-    resource_table = await md_security_group_table(accessible_resources, sg_names)
+    sg_table = md_security_group_table(security_groups)
+    resource_table = md_security_group_table(asg_object.accessible_resources, sg_names)
 
     if sg_table:
         md_output += f"#### Rule Summary\n{sg_table}\n"
@@ -62,13 +57,11 @@ async def md_autoscale_sgs(asg_object):
     return md_output
 
 
-async def md_autoscale_ips(asg_object):
+def md_autoscale_ips(asg_object):
     headers = ['Instance ID', 'IP', 'State']
     rows = []
-    await asg_object.load()
     instances = asg_object.instances
     for instance in instances:
-        await instance.load()
         rows.append([instance.id, instance.private_ip_address, instance.state['name']])
 
     return generate_md_table_str(row_list=rows, headers=headers)
