@@ -519,7 +519,13 @@ class ECSCluster(AutoScaleMixin, MetricMixin, BaseService):
     async def load_services(self):
         if self.services.loaded:
             return self.services
-        self.services = await self.services.list(cluster=self.name)
+
+        services = []
+        for service in await self.services.list(cluster=self.name):
+            service.cluster = self.name
+            services.append(service)
+        self.services = services
+
         return self.services
 
     async def load_scaling_policies(self):
