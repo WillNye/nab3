@@ -1,7 +1,6 @@
 from datetime import datetime as dt, timedelta
 
 from double_click.markdown import generate_md_bullet_str, generate_md_table_str
-from tqdm import tqdm
 
 
 def md_statistics_summary(metric_obj_list: list, metric_name: str) -> str:
@@ -41,7 +40,7 @@ def md_statistics_summary(metric_obj_list: list, metric_name: str) -> str:
     return f"{md_output}\n#### {metric_name} Table:\n{generate_md_table_str(rows, headers)}"
 
 
-def md_alerts(scalable_object, start_date=dt.now()-timedelta(days=30), end_date=dt.now()) -> str:
+def md_alarms(scalable_object, start_date=dt.now()-timedelta(days=30), end_date=dt.now()) -> str:
     md_output = ''
 
     if len(scalable_object.scaling_policies) == 0:
@@ -52,10 +51,10 @@ def md_alerts(scalable_object, start_date=dt.now()-timedelta(days=30), end_date=
     headers = ['Policy', 'Alarm', 'Time']
     rows = []
 
-    for asp in tqdm(scalable_object.scaling_policies):
-        alerts = asp.get_alerts(start_date=start_date, end_date=end_date, item_type='Action')
-        policy_summary.append(f'{asp.name} - {len(alerts)}')
-        rows += [[asp.name, alert.name, alert.timestamp] for alert in alerts]
+    for asp in scalable_object.scaling_policies:
+        alarms = asp.get_alarms(start_date=start_date, end_date=end_date, item_type='Action')
+        policy_summary.append(f'{asp.name} - {len(alarms)}')
+        rows += [[asp.name, alarm.name, alarm.timestamp] for alarm in alarms]
 
     if len(rows) == 0:
         return ''

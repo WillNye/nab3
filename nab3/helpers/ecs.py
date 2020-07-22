@@ -1,12 +1,12 @@
 from double_click.markdown import generate_md_bullet_str, generate_md_table_str
 
-from nab3.helpers.cloud_watch import md_alerts
+from nab3.helpers.cloud_watch import md_alarms
 
 
-def md_ecs_service_summary(ecs_service, display_alerts=True, display_events=True) -> str:
+def md_ecs_service_summary(ecs_service, display_alarms=True, display_events=True) -> str:
     """
     :param ecs_service: ECSService object
-    :param display_alerts: bool Default(True) - Display service cloudwatch alarms for the last 30 days
+    :param display_alarms: bool Default(True) - Display service cloudwatch alarms for the last 30 days
     :param display_events: bool Default(True) - Display the 50 most recent events of the service
     :return:
     """
@@ -21,20 +21,20 @@ def md_ecs_service_summary(ecs_service, display_alerts=True, display_events=True
     md_output = f"# {ecs_service.name}\n{generate_md_bullet_str(bullets)}"
     if display_events:
         headers = ["Event", "Occurred At"]
-        rows = [[event.get('message'), event.get('created_at')] for event in ecs_service.events]
+        rows = [[event.get('message')[:50], event.get('created_at')] for event in ecs_service.events]
         rows.sort(reverse=True, key=lambda x: x[1])
         md_output += f"\n### Events{generate_md_table_str(rows, headers)}"
 
-    if display_alerts:
-        md_output += md_alerts(ecs_service)
+    if display_alarms:
+        md_output += md_alarms(ecs_service)
 
     return md_output
 
 
-def md_ecs_cluster_summary(ecs_cluster, display_alerts=True, display_service_events=False) -> str:
+def md_ecs_cluster_summary(ecs_cluster, display_alarms=True, display_service_events=False) -> str:
     """
     :param ecs_cluster: ECSCluster object
-    :param display_alerts: bool Default(True) - Display cloudwatch alarms for the last 30 days
+    :param display_alarms: bool Default(True) - Display cloudwatch alarms for the last 30 days
     :param display_service_events: bool Default(True) - Display the 50 most recent events of each service
     :return:
     """
@@ -45,10 +45,10 @@ def md_ecs_cluster_summary(ecs_cluster, display_alerts=True, display_service_eve
 
     md_output = f"# {ecs_cluster.name}\n{generate_md_bullet_str(bullets)}"
 
-    if display_alerts:
-        md_output += md_alerts(ecs_cluster)
+    if display_alarms:
+        md_output += md_alarms(ecs_cluster)
 
     for service in ecs_cluster.services:
-        md_output += md_ecs_service_summary(service, display_alerts, display_service_events)
+        md_output += md_ecs_service_summary(service, display_alarms, display_service_events)
 
     return md_output

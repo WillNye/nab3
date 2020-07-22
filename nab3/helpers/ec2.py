@@ -1,11 +1,9 @@
 from double_click.markdown import generate_md_bullet_str, generate_md_table_str
-from tqdm import tqdm
 
 
 def md_security_group_table(sg_list: list, id_filter: list = []):
     headers = ['Name', 'SG/CIDR', 'Rule Type', 'Protocol', 'From', 'To']
     rows = []
-    sg_list = sg_list if len(sg_list) < 5 else tqdm(sg_list)
     for sg in sg_list:
         for ip_permissions in [dict(rule='Ingress', permissions=sg.ip_permissions),
                                dict(rule='Egress', permissions=sg.ip_permissions_egress)]:

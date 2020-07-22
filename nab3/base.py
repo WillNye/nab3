@@ -227,7 +227,7 @@ class BaseService(BaseAWS):
                     param_val = kwargs.get(param_attrs['name'], []) + value
                     call_params[param_attrs['name']] = param_val
                 else:
-                    call_params[param_attrs['name']] = kwargs.get(param_attrs['name'])
+                    call_params[param_attrs['name']] = value
 
         if not call_params:
             raise AttributeError(f'No valid parameters provided. {self._boto3_describe_def["call_params"].keys()}')
