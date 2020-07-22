@@ -291,19 +291,20 @@ class BaseService(BaseAWS):
             await self.load()
 
         for arg in args:
-            custom_load_method = getattr(self, f'load_{arg}', None)
-            if custom_load_method:
-                custom_load_methods.append(custom_load_method)
-                continue
-            elif any(sub_arg.startswith(f'{arg}__') for sub_arg in args):
-                continue
-
             arg_split = arg.split('__')
             cls_attr = arg_split[0]
             attr_args = None if len(arg_split) == 1 else '__'.join(arg_split[1:])
-            async_loads[cls_attr].append(attr_args)
+            custom_load_method = getattr(self, f'load_{cls_attr}', None)
 
-        await asyncio.gather(*[_fetch(attr_svc, attr_svc_args) for attr_svc, attr_svc_args in async_loads.items()])
+            if custom_load_method:
+                if custom_load_method not in custom_load_methods:
+                    custom_load_methods.append(custom_load_method)
+                if not attr_args:
+                    continue
+            elif any(sub_arg.startswith(f'{arg}__') for sub_arg in args):
+                continue
+
+            async_loads[cls_attr].append(attr_args)
 
         # Custom load methods exist as a way to create a reference to an AWS resource that isn't returned in the client
         # An example of this would be the ASG pulls security groups from its launch config
@@ -313,6 +314,8 @@ class BaseService(BaseAWS):
         #       load_accessible_resources calls load_accessible_resources which calls load_config.load
         for custom_load_method in custom_load_methods:
             await custom_load_method()
+
+        await asyncio.gather(*[_fetch(attr_svc, attr_svc_args) for attr_svc, attr_svc_args in async_loads.items()])
 
         return self
 
@@ -458,6 +461,14 @@ class ServiceDescriptor:
                 self.service = await self.service_class.list(service_list=self.service)
             elif not self.is_loaded():
                 await self.service.load()
+        return self.service
+
+    async def fetch(self, *args):
+        if self.service:
+            if self._is_list():
+                await asyncio.gather(*[svc.fetch(*args) for svc in self.service])
+            else:
+                await self.service.fetch(*args)
         return self.service
 
     def __set__(self, obj, value) -> None:
