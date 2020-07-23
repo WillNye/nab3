@@ -7,7 +7,9 @@ from collections import defaultdict
 import boto3
 import botocore
 
-from nab3.utils import camel_to_snake, describe_resource, Filter, paginated_search, snake_to_camelback
+from nab3.utils import (
+    camel_to_snake, describe_resource, Filter, paginated_search, snake_to_camelback
+)
 
 
 class ClientHandler:
@@ -90,6 +92,7 @@ class BaseService(BaseAWS):
     """
     _loaded = False
     _response_alias = {}
+    _to_boto3_case = snake_to_camelback
     # These are in relation to the call within the boto3 client
     # Not all clients/resources have a list operation
     _boto3_describe_def = dict(
@@ -272,16 +275,11 @@ class BaseService(BaseAWS):
         async def _fetch(svc_name, svc_fetch_args):
             svc_obj = getattr(self, svc_name, None)
             svc_fetch_args = [arg for arg in svc_fetch_args if arg]
-            if not svc_obj:
+            if svc_obj is None:
                 # This is expected not all AWS resources have every property defined
                 #   e.g. An ASG may not have an EC2 instance if desired = 0 and min = 0
                 return svc_obj
-
-            if svc_fetch_args:
-                loaded_obj = await svc_obj.fetch(*svc_fetch_args)
-            else:
-                loaded_obj = await svc_obj.load()
-
+            loaded_obj = await svc_obj.fetch(*svc_fetch_args)
             setattr(self, svc_name, loaded_obj)
 
         async_loads = defaultdict(list)
@@ -316,7 +314,6 @@ class BaseService(BaseAWS):
             await custom_load_method()
 
         await asyncio.gather(*[_fetch(attr_svc, attr_svc_args) for attr_svc, attr_svc_args in async_loads.items()])
-
         return self
 
     @classmethod
@@ -345,8 +342,8 @@ class BaseService(BaseAWS):
         describe_fnc = getattr(client, cls._boto3_describe_def.get('client_call', f'describe_{fnc_base}s'))
         list_key = cls._boto3_list_def.get('response_key', f'{cls.client_id}Arns')
         describe_key = cls._boto3_describe_def.get('response_key', f'{cls.client_id}s')
-        describe_kwargs = {snake_to_camelback(k): v for k, v in kwargs.pop('describe_kwargs').items()}
-        list_kwargs = {snake_to_camelback(k): v for k, v in kwargs.pop('list_kwargs').items()}
+        describe_kwargs = {cls._to_boto3_case(k): v for k, v in kwargs.pop('describe_kwargs').items()}
+        list_kwargs = {cls._to_boto3_case(k): v for k, v in kwargs.pop('list_kwargs').items()}
         results = paginated_search(list_fnc, list_kwargs, list_key)
         if not results:
             return results
@@ -391,7 +388,7 @@ class BaseService(BaseAWS):
                             kwargs[fnc_kwargs][param_attrs['name']] = value
 
         if fnc_name and response_key:
-            kwargs = {snake_to_camelback(k): v for k, v in kwargs.items()}
+            kwargs = {cls._to_boto3_case(k): v for k, v in kwargs.items()}
             client = cls._client.get(cls.boto3_service_name)
             boto3_fnc = getattr(client, fnc_name)
             response = paginated_search(boto3_fnc, kwargs, response_key)
@@ -426,7 +423,7 @@ class PaginatedBaseService(BaseService):
         :param kwargs:
         :return: list<cls()>
         """
-        kwargs = {snake_to_camelback(k): v for k, v in kwargs.pop('describe_kwargs', {}).items()}
+        kwargs = {cls._to_boto3_case(k): v for k, v in kwargs.items() if k not in ['list_kwargs', 'describe_kwargs']}
         response_key = cls._boto3_describe_def.get('response_key', f'{cls.client_id}s')
         fnc_base = camel_to_snake(cls.client_id)
         fnc_name = cls._boto3_describe_def.get('client_call', f'describe_{fnc_base}s')
