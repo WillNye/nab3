@@ -47,8 +47,7 @@ class SecurityGroupMixin:
         if self.accessible_resources.loaded:
             return self.accessible_resources
 
-        if not self.security_groups.loaded:
-            await self.fetch('security_groups')
+        await self.fetch('security_groups')
 
         filter_list = [sg.id for sg in self.security_groups]
         if not filter_list:

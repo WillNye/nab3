@@ -206,6 +206,7 @@ class SecurityGroup(PaginatedBaseService):
             name=dict(name='GroupNames', type=list),
         )
     )
+    _to_boto3_case = snake_to_camelcap
     _response_alias = dict(user_id_group_pairs='security_group')
 
 
@@ -231,7 +232,7 @@ class LaunchConfiguration(PaginatedBaseService):
         self._user_data = base64.b64decode(user_data).decode("UTF-8") if user_data else user_data
 
 
-class LoadBalancer(SecurityGroupMixin, BaseService):
+class LoadBalancer(SecurityGroupMixin, PaginatedBaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/elbv2.html#ElasticLoadBalancingv2.Client.describe_load_balancers
     """
