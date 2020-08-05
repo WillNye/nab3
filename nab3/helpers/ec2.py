@@ -13,14 +13,17 @@ def md_security_group_table(sg_list: list, id_filter: list = []):
                              ip_perm.get('from_port', 'None'),
                              ip_perm["ip_protocol"]]
                 for user_group in ip_perm.get('user_id_group_pairs', []):
-                    if not id_filter or user_group.id in id_filter:
-                        if user_group.id == sg.id:
+                    user_group_id = user_group.get('id')
+                    if not user_group_id:
+                        continue
+                    if not id_filter or user_group_id in id_filter:
+                        if user_group_id == sg.id:
                             name = f'Internal Rule - {sg.name}'
                         else:
-                            name = user_group.name
+                            name = user_group_id
                     else:
                         continue
-                    rows.append([name, user_group.id] + rule_list)
+                    rows.append([name, user_group_id] + rule_list)
 
                 for ip_range in ip_perm.get('ip_ranges', []):
                     if ip_range.get('cidr_ip') == '0.0.0.0/0':
@@ -50,7 +53,7 @@ def md_autoscale_sgs(asg_object):
     if sg_table:
         md_output += f"#### Rule Summary\n{sg_table}\n"
     if resource_table:
-        md_output += f"Accessible Resources\n{resource_table}\n"
+        md_output += f"#### Accessible Resources\n{resource_table}\n"
 
     return md_output
 

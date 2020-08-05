@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime as dt, timedelta
 
 from double_click.markdown import generate_md_bullet_str, generate_md_table_str
@@ -40,7 +41,12 @@ def md_statistics_summary(metric_obj_list: list, metric_name: str) -> str:
     return f"{md_output}\n#### {metric_name} Table:\n{generate_md_table_str(rows, headers)}"
 
 
-def md_alarms(scalable_object, start_date=dt.now()-timedelta(days=30), end_date=dt.now()) -> str:
+async def md_alarms(scalable_object, start_date=dt.now()-timedelta(days=30), end_date=dt.now()) -> str:
+    async def _asp_summary(scaling_policy):
+        asp_alarms = scaling_policy.get_alarms(start_date=start_date, end_date=end_date, item_type='Action')
+        asp_rows = [[scaling_policy.name, alarm.name, alarm.timestamp] for alarm in asp_alarms]
+        return dict(policy_summary=f'{scaling_policy.name} - {len(asp_alarms)}', rows=asp_rows)
+
     md_output = ''
 
     if len(scalable_object.scaling_policies) == 0:
@@ -51,10 +57,10 @@ def md_alarms(scalable_object, start_date=dt.now()-timedelta(days=30), end_date=
     headers = ['Policy', 'Alarm', 'Time']
     rows = []
 
-    for asp in scalable_object.scaling_policies:
-        alarms = asp.get_alarms(start_date=start_date, end_date=end_date, item_type='Action')
-        policy_summary.append(f'{asp.name} - {len(alarms)}')
-        rows += [[asp.name, alarm.name, alarm.timestamp] for alarm in alarms]
+    scaling_policy_summaries = await asyncio.gather(*[_asp_summary(asp) for asp in scalable_object.scaling_policies])
+    for asp in scaling_policy_summaries:
+        policy_summary.append(asp['policy_summary'])
+        rows += asp['rows']
 
     if len(rows) == 0:
         return ''

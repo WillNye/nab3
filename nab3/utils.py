@@ -1,28 +1,26 @@
 import asyncio
-import concurrent.futures
 import copy
 import inspect
 import logging
 import re
-from itertools import chain
 
 LOGGER = logging.getLogger('nab3')
 LOGGER.setLevel(logging.WARNING)
 
 
-def camel_to_snake(str_obj) -> str:
+def camel_to_snake(str_obj: str) -> str:
     return re.sub('([a-z0-9])([A-Z])', r'\1_\2', str_obj).lower()
 
 
-def camel_to_kebab(str_obj) -> str:
+def camel_to_kebab(str_obj: str) -> str:
     return re.sub('([a-z0-9])([A-Z])', r'\1-\2', str_obj).lower()
 
 
-def snake_to_camelback(str_obj) -> str:
+def snake_to_camelback(str_obj: str) -> str:
     return re.sub(r'_([a-z])', lambda x: x.group(1).upper(), str_obj)
 
 
-def snake_to_camelcap(str_obj) -> str:
+def snake_to_camelcap(str_obj: str) -> str:
     return snake_to_camelback(str_obj).title()
 
 
