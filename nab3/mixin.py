@@ -37,6 +37,7 @@ class AutoScaleMixin:
             scaling_policies = await self.scaling_policies.list(asg_name=self.name)
             self.scaling_policies = scaling_policies
 
+
 class SecurityGroupMixin:
     def __init__(self, **kwargs):
         self.create_service_field('accessible_resources', 'security_group')

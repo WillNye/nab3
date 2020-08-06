@@ -324,7 +324,8 @@ class ASG(SecurityGroupMixin, AutoScaleMixin, PaginatedBaseService):
         elif not launch_config.loaded:
             await launch_config.load()
 
-        self.security_groups = await launch_config.fetch('security_groups')
+        await launch_config.fetch('security_groups')
+        self.security_groups = launch_config.security_groups
         return self.security_groups
 
     @classmethod
