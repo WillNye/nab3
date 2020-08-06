@@ -472,7 +472,7 @@ class ServiceDescriptor:
         if isinstance(value, ServiceDescriptor):
             value = value.service
         if (isinstance(value, list) and all(isinstance(elem_val, self.service_class) for elem_val in value))\
-                or not isinstance(value, list) and isinstance(value, self.service_class):
+                or (not isinstance(value, list) and isinstance(value, self.service_class)):
             sd = ServiceDescriptor(service_class=self.service_class, name=self.name)
             sd.service = value
             obj.__dict__[self.name] = sd
