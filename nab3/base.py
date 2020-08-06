@@ -373,7 +373,7 @@ class BaseService(BaseAWS):
             for param_name, param_attrs in boto3_params.items():
                 value_list = [getattr(service, param_name, None) for service in service_list]
                 value_list = [v for v in value_list if v]
-                kwarg_val = kwargs.get(param_name, [])
+                kwarg_val = kwargs.pop(param_name, [])
                 value_list += kwarg_val if isinstance(kwarg_val, list) else [kwarg_val]
 
                 for value in value_list:
@@ -437,7 +437,7 @@ class PaginatedBaseService(BaseService):
 class ServiceDescriptor:
 
     def __init__(self, service_class: BaseService, name: str):
-        self._name = name
+        self.name = name
         self.service_class = service_class
         self.service = None
 
@@ -471,11 +471,11 @@ class ServiceDescriptor:
     def __set__(self, obj, value) -> None:
         if isinstance(value, ServiceDescriptor):
             value = value.service
-
-        if isinstance(value, list) and all(isinstance(elem_val, self.service_class) for elem_val in value):
-            self.service = value
-        elif not isinstance(value, list) and isinstance(value, self.service_class):
-            self.service = value
+        if (isinstance(value, list) and all(isinstance(elem_val, self.service_class) for elem_val in value))\
+                or not isinstance(value, list) and isinstance(value, self.service_class):
+            sd = ServiceDescriptor(service_class=self.service_class, name=self.name)
+            sd.service = value
+            obj.__dict__[self.name] = sd
         else:
             raise ValueError(f'{value} != (list<{self.service_class}> || {self.service_class})')
 
