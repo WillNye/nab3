@@ -471,10 +471,10 @@ class ECSCluster(AutoScaleMixin, MetricMixin, BaseService):
     )
 
     def __init__(self, **kwargs):
-        super(self._get_service_class('ecs_cluster'), self).__init__(**kwargs)
         self.create_service_field('asg', 'asg')
         self.create_service_field('instances', 'ecs_instance')
         self.create_service_field('services', 'ecs_service')
+        super(self._get_service_class('ecs_cluster'), self).__init__(**kwargs)
 
     async def load_asg(self):
         """

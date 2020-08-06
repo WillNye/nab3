@@ -29,19 +29,19 @@ class AppAutoScaleMixin:
 class AutoScaleMixin:
 
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
         self.create_service_field('scaling_policies', 'scaling_policy')
+        super().__init__(**kwargs)
 
     async def load_scaling_policies(self):
         if not self.scaling_policies.loaded:
-            self.scaling_policies = await self.scaling_policies.list(asg_name=self.name)
-
+            scaling_policies = await self.scaling_policies.list(asg_name=self.name)
+            self.scaling_policies = scaling_policies
 
 class SecurityGroupMixin:
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
         self.create_service_field('accessible_resources', 'security_group')
         self.create_service_field('security_groups', 'security_group')
+        super().__init__(**kwargs)
 
     async def load_accessible_resources(self):
         if self.accessible_resources.loaded:
