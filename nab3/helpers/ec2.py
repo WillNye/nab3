@@ -1,7 +1,7 @@
 from double_click.markdown import generate_md_bullet_str, generate_md_table_str
 
 
-def md_security_group_table(sg_list: list, id_filter: list = [], exclude_cidr: bool = False):
+def md_security_group_table(sg_list: list, id_filter: list = [], is_accessible_resources: bool = False):
     headers = ['Name', 'SG/CIDR', 'Rule Type', 'Protocol', 'From', 'To']
     rows = []
     for sg in sg_list:
@@ -9,22 +9,25 @@ def md_security_group_table(sg_list: list, id_filter: list = [], exclude_cidr: b
                                dict(rule='Egress', permissions=sg.ip_permissions_egress)]:
             for ip_perm in ip_permissions['permissions']:
                 rule_list = [ip_permissions['rule'],
+                             ip_perm["ip_protocol"],
                              ip_perm.get('from_port', 'None'),
-                             ip_perm.get('from_port', 'None'),
-                             ip_perm["ip_protocol"]]
+                             ip_perm.get('to_port', 'None')]
                 for user_group in ip_perm.get('user_id_group_pairs', []):
                     sg_id = user_group.get('group_id')
                     if sg_id and (not id_filter or sg_id in id_filter):
                         if sg_id == sg.id:
                             name = f'Internal Rule - {sg.name}'
                         else:
-                            name = sg.name
-                            sg_id = sg.id
+                            if is_accessible_resources:
+                                sg_id = sg.id
+                                name = sg.name
+                            else:
+                                name = user_group.get("description", "N/A")
                     else:
                         continue
                     rows.append([name, sg_id] + rule_list)
 
-                if exclude_cidr:
+                if is_accessible_resources:
                     continue
 
                 for ip_range in ip_perm.get('ip_ranges', []):
