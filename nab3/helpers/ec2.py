@@ -1,7 +1,7 @@
 from double_click.markdown import generate_md_bullet_str, generate_md_table_str
 
 
-def md_security_group_table(sg_list: list, id_filter: list = []):
+def md_security_group_table(sg_list: list, id_filter: list = [], exclude_cidr: bool = False):
     headers = ['Name', 'SG/CIDR', 'Rule Type', 'Protocol', 'From', 'To']
     rows = []
     for sg in sg_list:
@@ -13,27 +13,29 @@ def md_security_group_table(sg_list: list, id_filter: list = []):
                              ip_perm.get('from_port', 'None'),
                              ip_perm["ip_protocol"]]
                 for user_group in ip_perm.get('user_id_group_pairs', []):
-                    user_group_id = user_group.get('id')
-                    if not user_group_id:
-                        continue
-                    if not id_filter or user_group_id in id_filter:
-                        if user_group_id == sg.id:
+                    sg_id = user_group.get('group_id')
+                    if sg_id and (not id_filter or sg_id in id_filter):
+                        if sg_id == sg.id:
                             name = f'Internal Rule - {sg.name}'
                         else:
-                            name = user_group_id
+                            name = sg.name
+                            sg_id = sg.id
                     else:
                         continue
-                    rows.append([name, user_group_id] + rule_list)
+                    rows.append([name, sg_id] + rule_list)
+
+                if exclude_cidr:
+                    continue
 
                 for ip_range in ip_perm.get('ip_ranges', []):
                     if ip_range.get('cidr_ip') == '0.0.0.0/0':
                         continue
-                    rows.append([ip_range.get('description', "N/A"), f"IP {ip_range.get('cidr_ip')}"] + rule_list)
+                    rows.append([ip_range.get("description", "N/A"), f"IP {ip_range.get('cidr_ip')}"] + rule_list)
 
                 for ip_range in ip_perm.get('ipv6_ranges', []):
-                    if ip_range.get('cidr_ipv6') == '0.0.0.0/0':
+                    if ip_range.get('cidr_ipv6') == '0.0.0.0/0' or (id_filter and sg.id not in id_filter):
                         continue
-                    rows.append([ip_range.get('description', "N/A"), f"IPV6 {ip_range.get('cidr_ipv6')}"] + rule_list)
+                    rows.append([ip_range.get("description", "N/A"), f"IPV6 {ip_range.get('cidr_ipv6')}"] + rule_list)
 
     if rows:
         rows.sort(reverse=True, key=lambda x: x[0])
@@ -45,10 +47,10 @@ def md_autoscale_sgs(asg_object):
     if not security_groups:
         return ""
 
-    sg_names = [sg.id for sg in security_groups]
-    md_output = f"### Security Groups:\n{generate_md_bullet_str(sg_names)}\n"
+    sg_ids = [sg.id for sg in security_groups]
+    md_output = f"### Security Groups:\n{generate_md_bullet_str(sg_ids)}\n"
     sg_table = md_security_group_table(security_groups)
-    resource_table = md_security_group_table(asg_object.accessible_resources, sg_names)
+    resource_table = md_security_group_table(asg_object.accessible_resources, sg_ids, True)
 
     if sg_table:
         md_output += f"#### Rule Summary\n{sg_table}\n"
