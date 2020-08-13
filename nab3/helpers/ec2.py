@@ -2,7 +2,7 @@ from double_click.markdown import generate_md_bullet_str, generate_md_table_str
 
 
 def md_security_group_table(sg_list: list, id_filter: list = [], is_accessible_resources: bool = False):
-    headers = ['Name', 'SG/CIDR', 'Rule Type', 'Protocol', 'From', 'To']
+    headers = ['Security Group', 'Rule Name', 'SG/CIDR', 'Rule Type', 'Protocol', 'From', 'To']
     rows = []
     for sg in sg_list:
         for ip_permissions in [dict(rule='Ingress', permissions=sg.ip_permissions),
@@ -19,13 +19,12 @@ def md_security_group_table(sg_list: list, id_filter: list = [], is_accessible_r
                             name = f'Internal Rule - {sg.name}'
                         else:
                             if is_accessible_resources:
-                                sg_id = sg.id
                                 name = sg.name
                             else:
                                 name = user_group.get("description", "N/A")
                     else:
                         continue
-                    rows.append([name, sg_id] + rule_list)
+                    rows.append([sg.id, name, sg_id] + rule_list)
 
                 if is_accessible_resources:
                     continue
@@ -33,15 +32,24 @@ def md_security_group_table(sg_list: list, id_filter: list = [], is_accessible_r
                 for ip_range in ip_perm.get('ip_ranges', []):
                     if ip_range.get('cidr_ip') == '0.0.0.0/0':
                         continue
-                    rows.append([ip_range.get("description", "N/A"), f"IP {ip_range.get('cidr_ip')}"] + rule_list)
+
+                    rows.append(
+                        [sg.id, ip_range.get("description", "N/A"), f"IP {ip_range.get('cidr_ip')}"] + rule_list
+                    )
 
                 for ip_range in ip_perm.get('ipv6_ranges', []):
                     if ip_range.get('cidr_ipv6') == '0.0.0.0/0' or (id_filter and sg.id not in id_filter):
                         continue
-                    rows.append([ip_range.get("description", "N/A"), f"IPV6 {ip_range.get('cidr_ipv6')}"] + rule_list)
+
+                    rows.append(
+                        [sg.id, ip_range.get("description", "N/A"), f"IPV6 {ip_range.get('cidr_ipv6')}"] + rule_list
+                    )
 
     if rows:
-        rows.sort(reverse=True, key=lambda x: x[0])
+        if is_accessible_resources:
+            rows.sort(key=lambda x: x[2])
+        else:
+            rows.sort(key=lambda x: x[0])
         return generate_md_table_str(row_list=rows, headers=headers)
 
 
@@ -50,10 +58,10 @@ def md_autoscale_sgs(asg_object):
     if not security_groups:
         return ""
 
-    sg_ids = [sg.id for sg in security_groups]
-    md_output = f"### Security Groups:\n{generate_md_bullet_str(sg_ids)}\n"
+    sg_str_list = [f'{sg.name} ({sg.id})' for sg in security_groups]
+    md_output = f"### Security Groups:\n{generate_md_bullet_str(sg_str_list)}\n"
     sg_table = md_security_group_table(security_groups)
-    resource_table = md_security_group_table(asg_object.accessible_resources, sg_ids, True)
+    resource_table = md_security_group_table(asg_object.accessible_resources, [sg.id for sg in security_groups], True)
 
     if sg_table:
         md_output += f"#### Rule Summary\n{sg_table}\n"
