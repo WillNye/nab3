@@ -106,21 +106,62 @@ class Filter:
             return service_obj, is_match
         else:
             operation = safe_params[0]
+            if service_obj and (operation.endswith('_any') or operation.endswith('_all')):
+                assert isinstance(filter_value, list)
+
             try:
-                """ToDo:
-                # list_any
-                # list_all
-                # exact
-                # iexact
-                # lt
-                # gt
-                # lte
-                # gte
-                """
                 if service_obj is None:
                     return service_obj, False
-                elif operation == 're':
-                    return service_obj, bool(re.match(filter_value, service_obj))
+                elif operation in ['re', 're_any', 're_all']:
+                    if operation == 're':
+                        return service_obj, bool(re.match(filter_value, service_obj))
+                    elif operation == 're_any':
+                        return service_obj, any(bool(re.match(f_val, service_obj)) for f_val in filter_value)
+                    else:
+                        return service_obj, all(bool(re.match(f_val, service_obj)) for f_val in filter_value)
+
+                elif operation in ['contains', 'contains_any', 'contains_all']:
+                    if operation == 'contains':
+                        return service_obj, bool(filter_value in service_obj)
+                    elif operation == 'contains_any':
+                        return service_obj, any(bool(f_val in service_obj) for f_val in filter_value)
+                    else:
+                        return service_obj, all(bool(f_val in service_obj) for f_val in filter_value)
+
+                elif operation in ['icontains', 'icontains_any', 'icontains_all']:
+                    service_obj = service_obj.lower()
+                    if operation == 'icontains':
+                        return service_obj, bool(filter_value.lower() in service_obj)
+                    elif operation == 'icontains_any':
+                        return service_obj, any(bool(f_val.lower() in service_obj) for f_val in filter_value)
+                    else:
+                        return service_obj, all(bool(f_val.lower() in service_obj) for f_val in filter_value)
+
+                elif operation in ['exact', 'exact_any', 'exact_all']:
+                    if operation == 'exact':
+                        return service_obj, bool(filter_value == service_obj)
+                    elif operation == 'exact_any':
+                        return service_obj, any(bool(f_val == service_obj) for f_val in filter_value)
+                    else:
+                        return service_obj, all(bool(f_val == service_obj) for f_val in filter_value)
+
+                elif operation in ['iexact', 'iexact_any', 'iexact_all']:
+                    service_obj = service_obj.lower()
+                    if operation == 'iexact':
+                        return service_obj, bool(filter_value.lower() == service_obj)
+                    elif operation == 'iexact_any':
+                        return service_obj, any(bool(f_val.lower() == service_obj) for f_val in filter_value)
+                    else:
+                        return service_obj, all(bool(f_val.lower() == service_obj) for f_val in filter_value)
+
+                elif operation == 'lt':
+                    return service_obj, bool(service_obj < filter_value)
+                elif operation == 'lte':
+                    return service_obj, bool(service_obj <= filter_value)
+                elif operation == 'gt':
+                    return service_obj, bool(service_obj > filter_value)
+                elif operation == 'gte':
+                    return service_obj, bool(service_obj >= filter_value)
                 else:
                     raise KeyError(f'{operation} is not a valid Filter operation.\nOptions: {self.get_operations()}')
             except Exception as e:
@@ -137,4 +178,14 @@ class Filter:
 
     @staticmethod
     def get_operations():
-        return ['re']
+        return [
+            're',
+            'contains',
+            'icontains',
+            'exact',
+            'iexact',
+            'lt',
+            'lte',
+            'gt',
+            'gte'
+        ]

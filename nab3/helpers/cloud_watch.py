@@ -4,11 +4,13 @@ from datetime import datetime as dt, timedelta
 from double_click.markdown import generate_md_bullet_str, generate_md_table_str
 
 
-def md_statistics_summary(metric_obj_list: list, metric_name: str) -> str:
+def md_statistics_summary(metric_obj_list: list, metric_name: str, include_table: bool = True) -> str:
     """Creates a markdown summary based on the provided get_statistics list response
 
     :param metric_obj_list:
     :param metric_name:
+    :param include_table: Include an md table containing the datapoints used to generate the summary.
+        Columns: Time Unit Average Maximum
     :return:
     """
     md_output = f"### {metric_name}\n"
@@ -38,7 +40,7 @@ def md_statistics_summary(metric_obj_list: list, metric_name: str) -> str:
             f'Max {stat.title()}: {max_stat}'
         ])
 
-    return f"{md_output}\n#### {metric_name} Table:\n{generate_md_table_str(rows, headers)}"
+    return f"{md_output}\n{generate_md_table_str(rows, headers)}" if include_table else md_output
 
 
 async def md_alarms(scalable_object, start_date=dt.now()-timedelta(days=30), end_date=dt.now()) -> str:
