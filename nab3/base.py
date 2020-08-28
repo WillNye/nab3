@@ -51,6 +51,7 @@ class BaseAWS:
         load_balancer='LoadBalancer',
         load_balancer_classic='LoadBalancerClassic',
         metric='Metric',
+        pricing='Pricing',
         scaling_policy='AutoScalePolicy',
         security_group='SecurityGroup',
     )
