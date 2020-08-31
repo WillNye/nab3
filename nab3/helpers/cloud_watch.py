@@ -4,7 +4,7 @@ from datetime import datetime as dt, timedelta
 from double_click.markdown import generate_md_bullet_str, generate_md_table_str
 
 
-def md_statistics_summary(metric_obj_list: list, metric_name: str, include_table: bool = True) -> str:
+def md_statistics_summary(metric_obj_list: list, include_table: bool = True) -> str:
     """Creates a markdown summary based on the provided get_statistics list response
 
     :param metric_obj_list:
@@ -13,13 +13,14 @@ def md_statistics_summary(metric_obj_list: list, metric_name: str, include_table
         Columns: Time Unit Average Maximum
     :return:
     """
+    metric_name = metric_obj_list[0].name if metric_obj_list else ""
     md_output = f"### {metric_name}\n"
     if len(metric_obj_list) == 0:
         return md_output
 
     metric_attrs = metric_obj_list[0].__dict__.keys()
     # Remove irrelevant keys
-    stats = [key for key in metric_attrs if key not in ['key_prefix', '_loaded', 'timestamp', 'unit']]
+    stats = [key for key in metric_attrs if key not in ['name', 'key_prefix', '_loaded', 'timestamp', 'unit']]
     headers = ['Time', 'Unit'] + [stat.title() for stat in stats]
     rows = []
 
@@ -69,3 +70,49 @@ async def md_alarms(scalable_object, start_date=dt.now()-timedelta(days=30), end
 
     rows.sort(reverse=True, key=lambda x: x[2])
     return f"{md_output}{generate_md_bullet_str(policy_summary)}{generate_md_table_str(row_list=rows, headers=headers)}"
+
+
+async def set_service_stats(service_obj,
+                            stat_list: list = None,
+                            start_date=dt.now()-timedelta(days=30),
+                            end_date=dt.now()):
+    """Retrieves all statistics passed in stat_list for the service_obj.
+
+    service_obj.stats = [dict(metric=str, stats=Metric())]
+
+    :param service_obj:
+    :param stat_list:
+    :param start_date:
+    :param end_date:
+    :return: service_obj
+    """
+    async def _stat(metric):
+        return service_obj.get_statistics(metric_name=metric,
+                                          statistics=['Average', 'Maximum'],
+                                          start_time=start_date,
+                                          end_time=end_date,
+                                          interval_as_seconds=1800)  # 30 minutes
+
+    stat_list = stat_list if stat_list else ['CPUUtilization', 'MemoryUtilization']
+    service_obj.stats_list = await asyncio.gather(*[_stat(metric) for metric in stat_list])
+    return service_obj
+
+
+async def set_n_service_stats(service_list,
+                              stat_list: list = None,
+                              start_date=dt.now()-timedelta(days=30),
+                              end_date=dt.now()):
+    """Retrieves all statistics passed in stat_list for each of the provided services in service_list.
+
+    For each in service_list: service_obj.stats = [dict(metric=str, stats=Metric())]
+
+    :param service_list:
+    :param stat_list:
+    :param start_date:
+    :param end_date:
+    :return: service_list
+    """
+    return await asyncio.gather(*[
+        set_service_stats(service_obj, stat_list, start_date, end_date) for service_obj in service_list
+    ])
+
