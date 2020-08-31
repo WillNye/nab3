@@ -93,7 +93,7 @@ class Metric(PaginatedBaseService):
 
         client = cls._client.get(cls.boto3_service_name)
         response = client.get_metric_statistics(**search_kwargs)
-        return [cls(_loaded=True, **obj) for obj in response.get('Datapoints', [])]
+        return [cls(name=metric_name, _loaded=True, **obj) for obj in response.get('Datapoints', [])]
 
     @classmethod
     def get(cls, **kwargs):
@@ -302,8 +302,9 @@ class EC2Instance(PaginatedBaseService):
         return self
 
 
-class ASG(SecurityGroupMixin, AutoScaleMixin, PaginatedBaseService):
+class ASG(SecurityGroupMixin, AutoScaleMixin, MetricMixin, PaginatedBaseService):
     """
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/autoscaling.html#AutoScaling.Client.describe_auto_scaling_groups
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/autoscaling.html#AutoScaling.Client.describe_launch_configurations
     """
     boto3_service_name = 'autoscaling'
@@ -351,6 +352,14 @@ class ASG(SecurityGroupMixin, AutoScaleMixin, PaginatedBaseService):
         if with_related:
             await obj.fetch(*with_related)
         return obj
+
+    @property
+    def _stat_dimensions(self) -> list:
+        return [dict(Name='AutoScalingGroupName', Value=self.name)]
+
+    @property
+    def _stat_name(self) -> str:
+        return 'AWS/EC2'
 
 
 class ECSTask(BaseService):
