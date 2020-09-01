@@ -1,5 +1,8 @@
 import asyncio
 import copy
+import inspect
+import logging
+import re
 import sys
 from itertools import chain
 from collections import defaultdict
@@ -8,8 +11,11 @@ import boto3
 import botocore
 
 from nab3.utils import (
-    camel_to_snake, describe_resource, Filter, paginated_search, snake_to_camelback
+    camel_to_snake, describe_resource, paginated_search, snake_to_camelback
 )
+
+LOGGER = logging.getLogger('nab3')
+LOGGER.setLevel(logging.WARNING)
 
 
 class ClientHandler:
@@ -77,6 +83,237 @@ class BaseAWS:
         new_class._client = self._client
 
         return new_class
+
+
+class ServiceDescriptor:
+
+    def __init__(self, service_class, name: str = None):
+        self.service_class = service_class
+        self.service = None
+
+        if name:
+            self.name = name
+
+    def _is_list(self) -> bool:
+        return isinstance(self.service, list)
+
+    def is_loaded(self):
+        if self.service is None:
+            return False
+        elif self._is_list():
+            return all(svc.loaded for svc in self.service)
+        else:
+            return self.service.loaded
+
+    async def load(self):
+        if self.service:
+            if self._is_list() and not self.is_loaded():
+                self.service = await self.service_class.list(service_list=self.service)
+            elif not self.is_loaded():
+                await self.service.load()
+        return self.service
+
+    async def fetch(self, *args):
+        if self.service:
+            if self._is_list():
+                await asyncio.gather(*[svc.fetch(*args) for svc in self.service])
+            else:
+                await self.service.fetch(*args)
+        return self.service
+
+    def __set_name__(self, owner, name):
+        self.name = name
+
+    def __set__(self, obj, value) -> None:
+        if isinstance(value, ServiceDescriptor):
+            value = value.service
+        if (isinstance(value, list) and all(isinstance(elem_val, self.service_class) for elem_val in value))\
+                or (not isinstance(value, list) and isinstance(value, self.service_class)):
+            sd = ServiceDescriptor(service_class=self.service_class)
+            sd.service = value
+            obj.__dict__[self.name] = sd
+        else:
+            raise ValueError(f'{value} != (list<{self.service_class}> || {self.service_class})')
+
+    def __getattr__(self, value):
+        if value is 'loaded':
+            return self.is_loaded()
+        elif value is 'load':
+            return self.load
+        elif self.service is None:
+            return getattr(self.service_class, value, None)
+        return getattr(self.service, value, None)
+
+    def __getitem__(self, item):
+        if self._is_list():
+            sd = ServiceDescriptor(service_class=self.service_class)
+            sd.service = self.service[item]
+            return sd
+        else:
+            raise TypeError('Service class is not subscriptable')
+
+    def __iter__(self):
+        if isinstance(self.service, list):
+            yield from self.service
+        elif self.service is None or not self.is_loaded():
+            yield from []
+        else:
+            raise TypeError(f"{self.service} is not iterable")
+
+    def __len__(self):
+        if self.service is None:
+            return 0
+        elif isinstance(self.service, list):
+            return len(self.service)
+        else:
+            return 1
+
+    def __bool__(self):
+        return bool(self.is_loaded())
+
+
+class Filter:
+
+    def __init__(self, **kwargs):
+        self.filter_params = kwargs
+
+    def filter(self, **kwargs):
+        for k, v in kwargs.items():
+            self.filter_params[k] = v
+        return self
+
+    async def _match(self, service_obj, param_as_list, filter_value) -> tuple:
+        """
+
+        :param service_obj:
+        :param param_as_list:
+        :param filter_value:
+        :return:
+        """
+        is_match = False
+        safe_params = copy.deepcopy(param_as_list)  # Cause safety first
+        if len(safe_params) > 1:
+            if isinstance(service_obj, list):
+                hits = await asyncio.gather(*[
+                    self._match(e, safe_params, filter_value) for e in service_obj
+                ])
+                if any(hit[1] for hit in hits):
+                    # If 1 gets in they all get in because this indicates the primary object is a match
+                    response, is_match = [hit[0] for hit in hits], True
+                else:
+                    response, is_match = [], False
+            elif service_obj:
+                cur_key = safe_params.pop(0)
+                if isinstance(service_obj, dict):
+                    obj_val = service_obj.get(cur_key)
+                    response, is_match = await self._match(obj_val, safe_params, filter_value)
+                    if is_match:
+                        service_obj[cur_key] = response
+                elif inspect.isclass(type(service_obj)):
+                    try:
+                        await service_obj.load()
+                        if cur_key in service_obj.__dict__:
+                            nested_obj = getattr(service_obj, cur_key, None)
+                        else:
+                            nested_obj = await getattr(service_obj, cur_key, None)
+                        response, is_match = await self._match(nested_obj, safe_params, filter_value)
+                        if is_match:
+                            setattr(service_obj, cur_key, response)
+                    except AttributeError as ae:
+                        LOGGER.warning(f'Await Service Object Error {ae} {service_obj} {cur_key} {safe_params}')
+
+            return service_obj, is_match
+        else:
+            operation = safe_params[0]
+            if service_obj and (operation.endswith('_any') or operation.endswith('_all')):
+                assert isinstance(filter_value, list)
+
+            try:
+                if service_obj is None:
+                    return service_obj, False
+                elif operation in ['re', 're_any', 're_all']:
+                    if operation == 're':
+                        return service_obj, bool(re.match(filter_value, service_obj))
+                    elif operation == 're_any':
+                        return service_obj, any(bool(re.match(f_val, service_obj)) for f_val in filter_value)
+                    else:
+                        return service_obj, all(bool(re.match(f_val, service_obj)) for f_val in filter_value)
+
+                elif operation in ['contains', 'contains_any', 'contains_all']:
+                    if operation == 'contains':
+                        return service_obj, bool(filter_value in service_obj)
+                    elif operation == 'contains_any':
+                        return service_obj, any(bool(f_val in service_obj) for f_val in filter_value)
+                    else:
+                        return service_obj, all(bool(f_val in service_obj) for f_val in filter_value)
+
+                elif operation in ['icontains', 'icontains_any', 'icontains_all']:
+                    service_obj = service_obj.lower()
+                    if operation == 'icontains':
+                        return service_obj, bool(filter_value.lower() in service_obj)
+                    elif operation == 'icontains_any':
+                        return service_obj, any(bool(f_val.lower() in service_obj) for f_val in filter_value)
+                    else:
+                        return service_obj, all(bool(f_val.lower() in service_obj) for f_val in filter_value)
+
+                elif operation in ['exact', 'exact_any', 'exact_all']:
+                    if operation == 'exact':
+                        return service_obj, bool(filter_value == service_obj)
+                    elif operation == 'exact_any':
+                        return service_obj, any(bool(f_val == service_obj) for f_val in filter_value)
+                    else:
+                        return service_obj, all(bool(f_val == service_obj) for f_val in filter_value)
+
+                elif operation in ['iexact', 'iexact_any', 'iexact_all']:
+                    service_obj = service_obj.lower()
+                    if operation == 'iexact':
+                        return service_obj, bool(filter_value.lower() == service_obj)
+                    elif operation == 'iexact_any':
+                        return service_obj, any(bool(f_val.lower() == service_obj) for f_val in filter_value)
+                    else:
+                        return service_obj, all(bool(f_val.lower() == service_obj) for f_val in filter_value)
+
+                elif operation == 'lt':
+                    return service_obj, bool(service_obj < filter_value)
+                elif operation == 'lte':
+                    return service_obj, bool(service_obj <= filter_value)
+                elif operation == 'gt':
+                    return service_obj, bool(service_obj > filter_value)
+                elif operation == 'gte':
+                    return service_obj, bool(service_obj >= filter_value)
+                else:
+                    raise KeyError(f'{operation} is not a valid Filter operation.\nOptions: {self.get_operations()}')
+            except Exception as e:
+                LOGGER.warning(str(e))
+                return service_obj, False
+
+    async def run(self, service_objects):
+        if not isinstance(service_objects, ServiceDescriptor):
+            svc_objs = service_objects
+            service_objects = ServiceDescriptor(service_objects[0])
+            service_objects.service = svc_objs
+
+        for filter_param, filter_value in self.filter_params.items():
+            hits = await asyncio.gather(*[
+                self._match(so, filter_param.split('__'), filter_value) for so in service_objects
+            ])
+            service_objects.service = [hit[0] for hit in hits if hit[1]]
+
+        return service_objects
+
+    @staticmethod
+    def get_operations():
+        return [
+            're',
+            'contains',
+            'icontains',
+            'exact',
+            'iexact',
+            'lt',
+            'lte',
+            'gt',
+            'gte'
+        ]
 
 
 class BaseService(BaseAWS):
@@ -214,11 +451,6 @@ class BaseService(BaseAWS):
         except AttributeError:
             AttributeError(obj_key, normalized_output[obj_key])
 
-    def create_service_field(self, field_name, service_class):
-        if getattr(self, field_name, None) is None:
-            service_class = self._get_service_class(service_class)
-            setattr(type(self), field_name, ServiceDescriptor(service_class, field_name))
-
     async def _load(self, **kwargs):
         fnc_base = camel_to_snake(self.client_id)
         describe_fnc = getattr(self.client, self._boto3_describe_def.get('client_call', f'describe_{fnc_base}s'))
@@ -317,18 +549,59 @@ class BaseService(BaseAWS):
         await asyncio.gather(*[_fetch(attr_svc, attr_svc_args) for attr_svc, attr_svc_args in async_loads.items()])
         return self
 
+    def create_service_field(self, field_name, service_class):
+        if getattr(self, field_name, None) is None:
+            service_class = self._get_service_class(service_class)
+            setattr(type(self), field_name, ServiceDescriptor(service_class, field_name))
+
+    def fields(self):
+        """The attributes for the AWS Service instances are created dynamically so this helps inspect relevant fields
+
+        :return:
+        """
+        cluster_fields = {}
+        for k in dir(self):
+            if not callable(getattr(self, k)) and not k.startswith('_'):
+                v = getattr(self, k)
+                if isinstance(v, ServiceDescriptor):
+                    cluster_fields[k] = re.findall("'(.*)'", str(v.service_class))[0]
+                else:
+                    cluster_fields[k] = re.findall("'(.*)'", str(type(v)))[0]
+
+        return cluster_fields
+
+    def methods(self):
+        """The attributes for the AWS Service instances are created dynamically so this helps inspect relevant methods
+
+        :return:
+        """
+
+        cluster_methods = []
+        for k in dir(self):
+            if callable(getattr(self, k)) \
+                    and not k.startswith('_') \
+                    and not k.startswith('load_') \
+                    and (k != 'load' or not self.loaded) \
+                    and k not in ['create_service_field', 'filter', 'get', 'list']:
+                cluster_methods.append(k)
+
+        return cluster_methods
+
     @classmethod
-    async def get(cls, with_related=[], **kwargs):
+    async def get(cls, with_related=[], **kwargs) -> ServiceDescriptor:
         """Hits the client to set the entirety of the object using the provided lookup field.
 
         :param with_related: list of related AWS resources to return
         :return:
         """
+        resp = ServiceDescriptor(cls)
         obj = cls(**kwargs)
         await obj.load()
         if with_related:
             await obj.fetch(*with_related)
-        return obj
+
+        resp.service = obj
+        return resp
 
     @classmethod
     async def _list(cls, **kwargs) -> list:
@@ -357,7 +630,7 @@ class BaseService(BaseAWS):
         return [cls(_loaded=True, **obj) for obj in response]
 
     @classmethod
-    async def list(cls, fnc_name=None, response_key=None, **kwargs) -> list:
+    async def list(cls, fnc_name=None, response_key=None, **kwargs) -> ServiceDescriptor:
         """Returns an instance for each object
 
         :param fnc_name:
@@ -365,6 +638,7 @@ class BaseService(BaseAWS):
         :param kwargs:
         :return: list<cls()>
         """
+        resp = ServiceDescriptor(cls)
         service_list = kwargs.pop('service_list', [])
 
         for boto3_def, fnc_kwargs in [(cls._boto3_list_def, 'list_kwargs'),
@@ -393,9 +667,11 @@ class BaseService(BaseAWS):
             client = cls._client.get(cls.boto3_service_name)
             boto3_fnc = getattr(client, fnc_name)
             response = paginated_search(boto3_fnc, kwargs, response_key)
-            return [cls(_loaded=True, **obj) for obj in response]
+            resp.service = [cls(_loaded=True, **obj) for obj in response]
+        else:
+            resp.service = await cls._list(**kwargs)
 
-        return await cls._list(**kwargs)
+        return resp
 
     @classmethod
     async def filter(cls, **kwargs) -> list:
@@ -433,78 +709,4 @@ class PaginatedBaseService(BaseService):
         boto3_fnc = getattr(client, fnc_name)
         response = paginated_search(boto3_fnc, kwargs, response_key)
         return [cls(_loaded=True, **obj) for obj in response]
-
-
-class ServiceDescriptor:
-
-    def __init__(self, service_class: BaseService, name: str):
-        self.name = name
-        self.service_class = service_class
-        self.service = None
-
-    def is_loaded(self):
-        if self.service is None:
-            return False
-        elif self._is_list():
-            return all(svc.loaded for svc in self.service)
-        else:
-            return self.service.loaded
-
-    def _is_list(self) -> bool:
-        return isinstance(self.service, list)
-
-    async def load(self):
-        if self.service:
-            if self._is_list() and not self.is_loaded():
-                self.service = await self.service_class.list(service_list=self.service)
-            elif not self.is_loaded():
-                await self.service.load()
-        return self.service
-
-    async def fetch(self, *args):
-        if self.service:
-            if self._is_list():
-                await asyncio.gather(*[svc.fetch(*args) for svc in self.service])
-            else:
-                await self.service.fetch(*args)
-        return self.service
-
-    def __set__(self, obj, value) -> None:
-        if isinstance(value, ServiceDescriptor):
-            value = value.service
-        if (isinstance(value, list) and all(isinstance(elem_val, self.service_class) for elem_val in value))\
-                or (not isinstance(value, list) and isinstance(value, self.service_class)):
-            sd = ServiceDescriptor(service_class=self.service_class, name=self.name)
-            sd.service = value
-            obj.__dict__[self.name] = sd
-        else:
-            raise ValueError(f'{value} != (list<{self.service_class}> || {self.service_class})')
-
-    def __getattr__(self, value):
-        if value is 'loaded':
-            return self.is_loaded()
-        elif value is 'load':
-            return self.load
-        elif self.service is None:
-            return getattr(self.service_class, value, None)
-        return getattr(self.service, value, None)
-
-    def __iter__(self):
-        if isinstance(self.service, list):
-            yield from self.service
-        elif self.service is None or not self.is_loaded():
-            yield from []
-        else:
-            raise TypeError(f"{self.service} is not iterable")
-
-    def __len__(self):
-        if self.service is None:
-            return 0
-        elif isinstance(self.service, list):
-            return len(self.service)
-        else:
-            return 1
-
-    def __bool__(self):
-        return bool(self.is_loaded())
 
