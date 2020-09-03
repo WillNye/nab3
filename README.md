@@ -30,7 +30,7 @@ from nab3 import AWS
 
 async def ecs_sg_example():
     ecs_cluster = await aws.ecs_cluster.get(name='cluster-name', with_related=['asg__security_groups'])
-    # print([sg.name for sg in ecs_cluster.security_groups])
+    print([sg.name for sg in ecs_cluster.security_groups])
 
 
 aws = AWS()
@@ -38,6 +38,18 @@ asyncio.run(ecs_sg_example())
 
 ```
 
+## Features
+* All AWS operations are made async
+* Supports multiple AWS sessions in a single script
+* Easy to use interface for inspecting an AWS response
+* Simple process to retrieve related attributes 
+* Creates intuitive relationships that aren't supported in boto3
+* Services contain methods to retrieve retrieve metrics 
+* Consistent case convention and methods to access 
+* Manages client connections
+* Comprehensive filter operations on an AWS response
 
+## Installation
+`pip install -U nab3` 
 
 
