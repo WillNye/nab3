@@ -37,7 +37,16 @@ def paginated_search(search_fnc, search_kwargs: dict, response_key: str, max_res
             return results
 
 
-async def describe_resource(search_fnc, id_key: str, id_list: list, search_kwargs: dict, chunk_size: int = 50):
+async def describe_resource(search_fnc, id_key: str, id_list: list, search_kwargs: dict, chunk_size: int = 50) -> list:
+    """Chunks up describe operation and runs requests concurrently.
+
+    :param search_fnc: Name of the boto3 function e.g. describe_auto_scaling_groups
+    :param id_key: Name of the key used for describe operation e.g. AutoScalingGroupNames
+    :param id_list: List of id values
+    :param search_kwargs: Additional arguments to pass to the describe operation like Filter, MaxRecords, or Tags
+    :param chunk_size: Used to set request size. Cannot exceed the operation's MaxRecords or there may be data loss.
+    :return: list<boto3 describe response>
+    """
     async def _describe(chunked_list):
         return search_fnc(**{**{id_key: chunked_list}, **search_kwargs})
 

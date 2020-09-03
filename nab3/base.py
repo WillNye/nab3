@@ -86,6 +86,14 @@ class BaseAWS:
 
 
 class ServiceDescriptor:
+    """A wrapper for Service objects to provide a consistent interface when dealing with 1 or more instances
+
+    If you are familiar with Django this is the love child of the Field class and Queryset class.
+    It provides a wrapper to filter, load, or fetch 1 or more service objects.
+    Because the instance fields are set dynamically ServiceDescriptor also:
+        Validates the type for an instance attribute that is expected to be a Service object
+        Allows attributes to behave like the object e.g. obj.service_attr.other_service_list.load()
+    """
 
     def __init__(self, service_class, name: str = None):
         self.service_class = service_class
@@ -173,11 +181,41 @@ class ServiceDescriptor:
 
 
 class Filter:
+    """Provides a class to easily filter service objects using common operations like gt/lt, contains, exact, etc.
+
+    The decision to have a filter class and a run method is to make the process of hitting AWS more explicit.
+    It's also worth mentioning that lookups to AWS can get costly fast and this helps to mitigate that.
+    This is also why there's no filter method Service class.
+    nab3 is designed so all necessary data is pulled at once and manipulated through out the script.
+
+    For example, if you wanted to get ECS Cluster stats grouped by dev, stg, and prod:
+
+    ecs_cluster = await AWS.ecs_cluster.list()
+    f_prod = Filter(name__icontains_any=['prod-', 'production'])
+    f_stg = Filter(name__icontains_any=['stg-', 'staging'])
+    f_dev = Filter(name__icontains_any=['dev-', 'development'])
+    prod_clusters = await f.run(ecs_cluster)
+    stg_clusters = await f.run(ecs_cluster)
+    dev_clusters = await f.run(ecs_cluster)
+
+    # If this was an allowed method, the unassuming eye would think these were the same.
+    # Surprise! The number of lookups is 3n (if there were a dev and stg equivalent for each prod cluster)
+    prod_clusters = await AWS.ecs_cluster.filter(name__icontains_any=['prod-', 'production'])
+    stg_clusters = await AWS.ecs_cluster.filter(name__icontains_any=['stg-', 'staging'])
+    dev_clusters = await AWS.ecs_cluster.filter(name__icontains_any=['dev-', 'development'])
+
+    Why? Because these evaluations are done as part of nab3 and are not supported by boto3 or the AWS API.
+    """
 
     def __init__(self, **kwargs):
         self.filter_params = kwargs
 
-    def filter(self, **kwargs):
+    def upsert_filter(self, **kwargs):
+        """Updates or creates Filter instance params used for filtering a Service object
+
+        :param kwargs:
+        :return:
+        """
         for k, v in kwargs.items():
             self.filter_params[k] = v
         return self
@@ -288,6 +326,11 @@ class Filter:
                 return service_obj, False
 
     async def run(self, service_objects):
+        """
+
+        :param service_objects:
+        :return:
+        """
         if not isinstance(service_objects, ServiceDescriptor):
             svc_objs = service_objects
             service_objects = ServiceDescriptor(service_objects[0])
@@ -505,6 +548,34 @@ class BaseService(BaseAWS):
             return self
 
     async def fetch(self, *args):
+        """Given the name of an instance attribute, retrieves that related attribute from AWS
+
+        The value of the attribute will be updated accordingly and the Service object will be returned.
+
+        fetch/with_related was deliberately omitted from list due to one of its key features.
+        The args in fetch can be nested using __ as a delimiter to pull everything you need ahead of time.
+        The benefit of this is performance, and readability but operations can get expensive quick.
+        Another thing to keep in mind is operations aren't lazy and joins don't exist.
+        Each related object incur a lookup to AWS.
+
+        As an example, if you wanted to inspect all ECS Service scaling policies for your production ECS clusters.
+        
+        # This would get all ECS clusters, filter for production clusters
+        #   then retrieve the related services and the services scaling policies.
+        ecs_cluster = await AWS.ecs_cluster.list()
+        f = Filter(name__icontains_any=['prod-', 'production'])
+        prod_clusters = await f.run(ecs_cluster)
+        await prod_clusters.fetch('services__scaling_policies')
+
+        # If this were ok, the unassuming eye would think these were the same.
+        # Surprise! The number of lookups is 3n (if there were a dev and stg equivalent for each prod cluster)
+        ecs_cluster = await AWS.ecs_cluster.list(with_related=['services__scaling_policies'])
+        f = Filter(name__icontains_any=['prod-', 'production'])
+        prod_clusters = await f.run(ecs_cluster)
+
+        :param args:
+        :return: Service
+        """
         async def _fetch(svc_name, svc_fetch_args):
             svc_obj = getattr(self, svc_name, None)
             svc_fetch_args = [arg for arg in svc_fetch_args if arg]
@@ -550,12 +621,27 @@ class BaseService(BaseAWS):
         return self
 
     def create_service_field(self, field_name, service_class):
+        """
+
+        :param field_name: name of the attribute for the instance
+        :param service_class: Name of the Service class
+        :return:
+        """
         if getattr(self, field_name, None) is None:
             service_class = self._get_service_class(service_class)
             setattr(type(self), field_name, ServiceDescriptor(service_class, field_name))
 
     def fields(self):
         """The attributes for the AWS Service instances are created dynamically so this helps inspect relevant fields
+        fields() will also return attributes that aren't part of the normal boto3 response but are related to the service
+        An example of this would an asg's instances
+
+        These fields can be populated in 2 different ways:
+        1.) It can be passed in when initially retrieving the object using the get method like this
+            asg = await AWS.asg.get(name='sample', with_related=['instances'])
+        2.) Calling fetch on the instance attribute.
+            asg = await AWS.asg.list()
+            await asg.fetch(['instances'])
 
         :return:
         """
@@ -672,23 +758,6 @@ class BaseService(BaseAWS):
             resp.service = await cls._list(**kwargs)
 
         return resp
-
-    @classmethod
-    async def filter(cls, **kwargs) -> list:
-        """Returns an instance for each object
-
-        :param kwargs:
-        :return: list<cls()>
-        """
-        filter_operations = [f'__{filter_op}' for filter_op in Filter.get_operations()]
-        filter_kwargs = {k: v for k, v in kwargs.items() if any(k.endswith(op) for op in filter_operations)}
-        kwargs = {k: v for k, v in kwargs.items() if k not in filter_kwargs.keys()}
-        service_objects = await cls.list(**kwargs)
-        if service_objects and filter_kwargs:
-            filter_obj = Filter(**filter_kwargs)
-            return await filter_obj.run(service_objects)
-        else:
-            return service_objects
 
 
 class PaginatedBaseService(BaseService):

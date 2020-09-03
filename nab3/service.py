@@ -11,12 +11,15 @@ LOGGER.setLevel(logging.WARNING)
 
 
 class Alarm(PaginatedBaseService):
+    """
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/cloudwatch.html#CloudWatch.Client.describe_alarm_history
+    """
     boto3_service_name = 'cloudwatch'
     client_id = 'Alarm'
 
     @classmethod
-    def get_history(cls, start_date, end_date, name=None, item_type=None, alarm_types=[], sort_descending=True):
-        """
+    def get_history(cls, start_date, end_date, name=None, item_type=None, alarm_types = None, sort_descending=True):
+        """ Retrieves the history for the specified alarm.
         :param start_date: StartDate=datetime(2015, 1, 1)
         :param end_date: EndDate=datetime(2015, 1, 1)
         :param name: AlarmName='string'
@@ -278,7 +281,6 @@ class EC2Instance(PaginatedBaseService):
     async def _list(cls, filters=[], instance_ids=[], **kwargs) -> list:
         """
 
-
         :param instance_ids: list<str>
         :param filters: list<dict> Available filter options available in the boto3 link above
         :return:
@@ -316,6 +318,12 @@ class ASG(SecurityGroupMixin, AutoScaleMixin, MetricMixin, PaginatedBaseService)
     )
 
     async def load_security_groups(self):
+        """Retrieves the instances related security groups.
+
+        stored as the instance attribute `obj.security_groups`
+
+        :return: list<SecurityGroup>
+        """
         if self.security_groups.loaded:
             return self.security_groups
 
@@ -487,11 +495,12 @@ class ECSCluster(AutoScaleMixin, MetricMixin, BaseService):
         super(self._get_service_class('ecs_cluster'), self).__init__(**kwargs)
 
     async def load_asg(self):
-        """
+        """Retrieves the instances asg.
+
+        stored as the instance attribute `obj.asg`
 
         if self.scaling_policies.loaded:
             return self.scaling_policies
-
 
         if not self.security_groups.loaded:
             await self.fetch('security_groups')
@@ -507,7 +516,7 @@ class ECSCluster(AutoScaleMixin, MetricMixin, BaseService):
 
         return self.accessible_resources
 
-        :return:
+        :return: ASG
         """
         if self.asg.loaded:
             return self.asg
@@ -522,12 +531,24 @@ class ECSCluster(AutoScaleMixin, MetricMixin, BaseService):
         return self.asg
 
     async def load_instances(self):
+        """Retrieves the cluster's instances.
+
+        stored as the instance attribute `obj.instances`
+
+        :return: list<instances>
+        """
         if self.instances.loaded:
             return self.instances
         self.instances = await self.instances.list(cluster=self.name)
         return self.instances
 
     async def load_services(self):
+        """Retrieves the cluster's services.
+
+        stored as the instance attribute `obj.services`
+
+        :return: list<services>
+        """
         if self.services.loaded:
             return self.services
 
@@ -540,6 +561,12 @@ class ECSCluster(AutoScaleMixin, MetricMixin, BaseService):
         return self.services
 
     async def load_scaling_policies(self):
+        """Retrieves the cluster's scaling policies.
+
+        stored as the instance attribute `obj.scaling_policies`
+
+        :return: list<scaling_policies>
+        """
         if self.scaling_policies.loaded:
             return self.scaling_policies
         if not self.asg.loaded:
