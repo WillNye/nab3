@@ -248,7 +248,7 @@ class LoadBalancer(SecurityGroupMixin, PaginatedBaseService):
     )
 
 
-class LoadBalancerClassic(SecurityGroupMixin, BaseService):
+class LoadBalancerClassic(SecurityGroupMixin, PaginatedBaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/elbv2.html#ElasticLoadBalancingv2.Client.describe_load_balancers
     """

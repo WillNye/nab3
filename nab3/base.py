@@ -129,6 +129,11 @@ class ServiceDescriptor:
                 await self.service.fetch(*args)
         return self.service
 
+    def copy(self):
+        service_obj = ServiceDescriptor(self.service_class)
+        service_obj.service = self.service
+        return service_obj
+
     def __set_name__(self, owner, name):
         self.name = name
 
@@ -325,24 +330,20 @@ class Filter:
                 LOGGER.warning(str(e))
                 return service_obj, False
 
-    async def run(self, service_objects):
+    async def run(self, service_obj):
         """
-
-        :param service_objects:
+        :param service_obj:
         :return:
         """
-        if not isinstance(service_objects, ServiceDescriptor):
-            svc_objs = service_objects
-            service_objects = ServiceDescriptor(service_objects[0])
-            service_objects.service = svc_objs
+        service_obj = service_obj.copy()
 
         for filter_param, filter_value in self.filter_params.items():
             hits = await asyncio.gather(*[
-                self._match(so, filter_param.split('__'), filter_value) for so in service_objects
+                self._match(so, filter_param.split('__'), filter_value) for so in service_obj
             ])
-            service_objects.service = [hit[0] for hit in hits if hit[1]]
+            service_obj.service = [hit[0] for hit in hits if hit[1]]
 
-        return service_objects
+        return service_obj
 
     @staticmethod
     def get_operations():
