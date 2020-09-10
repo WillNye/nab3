@@ -15,6 +15,9 @@ class AWS(BaseAWS):
             new_class = self._get_service_class(service_name)
             self.__setattr__(service_name, new_class)
 
-    @property
     def service_options(self):
+        """
+        Returns a list of supported service classes
+        :return:
+        """
         return sorted([k for k in self._service_map.keys()])
