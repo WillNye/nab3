@@ -10,4 +10,7 @@ Second, due to dependencies and using dependency output when provisioning AWS re
 Third, I'm a huge fan of python but everything has it's place. 
 If you're attempting to automate resource provisioning or want infrastructure represented in code you should really check out [Terraform](https://registry.terraform.io/providers/hashicorp/aws/latest/docs). 
 
+## Why is it called the `Service` class and not `Resource` class?
+In boto3 they're referred to as a service so this helps maintain consistency.
+Plus, come on. It's called Amazon Web Services not Amazon Web Resources.
 

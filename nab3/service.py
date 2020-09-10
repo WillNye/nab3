@@ -201,7 +201,6 @@ class SecurityGroup(PaginatedBaseService):
     boto3_service_name = 'ec2'
     client_id = 'SecurityGroup'
     key_prefix = 'Group'
-    _accessible_sg = False
     _boto3_describe_def = dict(
         client_call="describe_security_groups",
         call_params=dict(
