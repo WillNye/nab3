@@ -15,7 +15,7 @@ class Alarm(PaginatedBaseService):
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/cloudwatch.html#CloudWatch.Client.describe_alarm_history
     """
     boto3_service_name = 'cloudwatch'
-    client_id = 'Alarm'
+    key_prefix = 'Alarm'
 
     @classmethod
     def get_history(cls, start_date, end_date, name=None, item_type=None, alarm_types = None, sort_descending=True):
@@ -48,7 +48,7 @@ class Metric(PaginatedBaseService):
     docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/cloudwatch_concepts.html#dimension-combinations
     """
     boto3_service_name = 'cloudwatch'
-    client_id = 'Metric'
+    key_prefix = 'Metric'
     _boto3_describe_def = dict(
         client_call="list_metrics",
         call_params=dict(
@@ -112,7 +112,7 @@ class AutoScalePolicy(PaginatedBaseService):
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/autoscaling.html#AutoScaling.Client.describe_policies
     """
     boto3_service_name = 'autoscaling'
-    client_id = 'Policy'
+    key_prefix = 'Policy'
     _boto3_describe_def = dict(
         client_call='describe_policies',
         call_params=dict(
@@ -164,7 +164,7 @@ class AppAutoScalePolicy(PaginatedBaseService):
         cassandra:table:WriteCapacityUnits
     """
     boto3_service_name = 'application-autoscaling'
-    client_id = 'Policy'
+    key_prefix = 'Policy'
     _boto3_describe_def = dict(
         client_call='describe_scaling_policies',
         call_params=dict(
@@ -199,8 +199,8 @@ class SecurityGroup(PaginatedBaseService):
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_security_groups
     """
     boto3_service_name = 'ec2'
-    client_id = 'SecurityGroup'
-    key_prefix = 'Group'
+    key_prefix = 'SecurityGroup'
+    client_id = 'Group'
     _boto3_describe_def = dict(
         client_call="describe_security_groups",
         call_params=dict(
@@ -217,7 +217,7 @@ class LaunchConfiguration(PaginatedBaseService):
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/autoscaling.html#AutoScaling.Client.describe_launch_configurations
     """
     boto3_service_name = 'autoscaling'
-    client_id = 'LaunchConfiguration'
+    key_prefix = 'LaunchConfiguration'
     _boto3_describe_def = dict(
         call_params=dict(
             name=dict(name='LaunchConfigurationNames', type=list),
@@ -239,7 +239,7 @@ class LoadBalancer(SecurityGroupMixin, PaginatedBaseService):
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/elbv2.html#ElasticLoadBalancingv2.Client.describe_load_balancers
     """
     boto3_service_name = 'elbv2'
-    client_id = 'LoadBalancer'
+    key_prefix = 'LoadBalancer'
     _boto3_describe_def = dict(
         call_params=dict(
             arn=dict(name='LoadBalancerArns', type=list),  # list<str>
@@ -253,7 +253,7 @@ class LoadBalancerClassic(SecurityGroupMixin, BaseService):
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/elbv2.html#ElasticLoadBalancingv2.Client.describe_load_balancers
     """
     boto3_service_name = 'elb'
-    client_id = 'LoadBalancer'
+    key_prefix = 'LoadBalancer'
     _boto3_describe_def = dict(
         client_call='describe_load_balancers',
         call_params=dict(
@@ -268,7 +268,7 @@ class EC2Instance(PaginatedBaseService):
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_instances
     """
     boto3_service_name = 'ec2'
-    client_id = 'Instance'
+    key_prefix = 'Instance'
     _boto3_describe_def = dict(
         call_params=dict(
             id=dict(name='InstanceIds', type=list),
@@ -309,7 +309,7 @@ class ASG(SecurityGroupMixin, AutoScaleMixin, MetricMixin, PaginatedBaseService)
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/autoscaling.html#AutoScaling.Client.describe_launch_configurations
     """
     boto3_service_name = 'autoscaling'
-    client_id = 'AutoScalingGroup'
+    key_prefix = 'AutoScalingGroup'
     _boto3_describe_def = dict(
         call_params=dict(
             name=dict(name='AutoScalingGroupNames', type=list),
@@ -375,7 +375,7 @@ class ECSTask(BaseService):
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.describe_tasks
     """
     boto3_service_name = 'ecs'
-    client_id = 'task'
+    key_prefix = 'task'
     _boto3_describe_def = dict(
         client_call="list_metrics",
         call_params=dict(
@@ -404,7 +404,7 @@ class ECSService(MetricMixin, AppAutoScaleMixin, BaseService):
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.describe_services
     """
     boto3_service_name = 'ecs'
-    client_id = 'service'
+    key_prefix = 'service'
     _boto3_describe_def = dict(
         call_params=dict(
             cluster=dict(name='cluster', type=str),
@@ -429,7 +429,7 @@ class ECSService(MetricMixin, AppAutoScaleMixin, BaseService):
 
     @property
     def resource_id(self):
-        return f"{self.client_id}/{self.cluster}/{self.name}"
+        return f"{self.key_prefix}/{self.cluster}/{self.name}"
 
     @property
     def _stat_dimensions(self) -> list:
@@ -456,7 +456,7 @@ class ECSInstance(BaseService):
         REGISTRATION_FAILED
     """
     boto3_service_name = 'ecs'
-    client_id = 'containerInstance'
+    key_prefix = 'containerInstance'
     _boto3_describe_def = dict(
         call_params=dict(
             cluster=dict(name='cluster', type=str),
@@ -479,7 +479,7 @@ class ECSCluster(AutoScaleMixin, MetricMixin, BaseService):
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.describe_clusters
     """
     boto3_service_name = 'ecs'
-    client_id = 'cluster'
+    key_prefix = 'cluster'
     _boto3_describe_def = dict(
         call_params=dict(
             name=dict(name='clusters', type=list),  # list<str>
@@ -590,7 +590,7 @@ class Pricing(PaginatedBaseService):
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/pricing.html#Pricing.Client.get_products
     """
     boto3_service_name = 'pricing'
-    client_id = 'product'
+    key_prefix = 'product'
     _boto3_describe_def = dict(
         client_call='get_products',
         call_params=dict(

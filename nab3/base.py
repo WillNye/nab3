@@ -364,8 +364,8 @@ class BaseService(BaseAWS):
     https://boto3.amazonaws.com/v1/documentation/api/latest/index.html
     """
     boto3_service_name: str
-    client_id: str
     key_prefix: str
+    client_id: str
     """_response_alias maps each element in the list to a service class.
     This is an effort to ensure proper mapping on nested objects.
         example: describe_security_groups contains UserIdGroupPairs
@@ -377,20 +377,20 @@ class BaseService(BaseAWS):
     # These are in relation to the call within the boto3 client
     # Not all clients/resources have a list operation
     _boto3_describe_def = dict(
-        # client_call: str default f'describe_{camel_to_snake(self.client_id)}s'
-        # response_key: str default f'{self.client_id}s'
+        # client_call: str default f'describe_{camel_to_snake(self.key_prefix)}s'
+        # response_key: str default f'{self.key_prefix}s'
         call_params=dict(),  # variable_name: str = dict(name:str, type:any)
     )
     _boto3_list_def = dict(
-        # client_call: str default f'list_{camel_to_snake(self.client_id)}s'
-        # response_key: str default f'{self.client_id}Arns'
+        # client_call: str default f'list_{camel_to_snake(self.key_prefix)}s'
+        # response_key: str default f'{self.key_prefix}Arns'
         call_params=dict(),  # variable_name: str = dict(name:str, type:any)
     )
 
     def __init__(self, **kwargs):
-        key_prefix = getattr(self, 'key_prefix', None)
-        if not key_prefix:
-            self.key_prefix = self.client_id
+        client_id = getattr(self, 'client_id', None)
+        if not client_id:
+            self.client_id = self.key_prefix
 
         for k, v in kwargs.items():
             self._set_attr(k, v)
@@ -443,8 +443,8 @@ class BaseService(BaseAWS):
         """
         # This isn't in the recursive function to support nested objects
         #   Like a security group containing security objects
-        if obj_key.startswith(self.key_prefix):
-            obj_key = obj_key.replace(self.key_prefix, "")
+        if obj_key.startswith(self.client_id):
+            obj_key = obj_key.replace(self.client_id, "")
 
         obj_key = camel_to_snake(obj_key)
         svc_list_alias = self._response_alias.get(obj_key)
@@ -495,7 +495,7 @@ class BaseService(BaseAWS):
             AttributeError(obj_key, normalized_output[obj_key])
 
     async def _load(self, **kwargs):
-        fnc_base = camel_to_snake(self.client_id)
+        fnc_base = camel_to_snake(self.key_prefix)
         describe_fnc = getattr(self.client, self._boto3_describe_def.get('client_call', f'describe_{fnc_base}s'))
         call_params = dict()
         for param_name, param_attrs in self._boto3_describe_def['call_params'].items():
@@ -512,7 +512,7 @@ class BaseService(BaseAWS):
             raise AttributeError(f'No valid parameters provided. {self._boto3_describe_def["call_params"].keys()}')
 
         response = describe_fnc(**call_params)
-        response = response[self._boto3_describe_def.get('response_key', f'{self.client_id}s')]
+        response = response[self._boto3_describe_def.get('response_key', f'{self.key_prefix}s')]
         if response:
             if len(response) == 1:
                 for k, v in response[0].items():
@@ -696,12 +696,12 @@ class BaseService(BaseAWS):
         :param kwargs:
         :return: list<cls()>
         """
-        fnc_base = camel_to_snake(cls.client_id)
+        fnc_base = camel_to_snake(cls.key_prefix)
         client = cls._client.get(cls.boto3_service_name)
         list_fnc = getattr(client, cls._boto3_list_def.get('client_call', f'list_{fnc_base}s'))
         describe_fnc = getattr(client, cls._boto3_describe_def.get('client_call', f'describe_{fnc_base}s'))
-        list_key = cls._boto3_list_def.get('response_key', f'{cls.client_id}Arns')
-        describe_key = cls._boto3_describe_def.get('response_key', f'{cls.client_id}s')
+        list_key = cls._boto3_list_def.get('response_key', f'{cls.key_prefix}Arns')
+        describe_key = cls._boto3_describe_def.get('response_key', f'{cls.key_prefix}s')
         describe_kwargs = {cls._to_boto3_case(k): v for k, v in kwargs.pop('describe_kwargs').items()}
         list_kwargs = {cls._to_boto3_case(k): v for k, v in kwargs.pop('list_kwargs').items()}
         results = paginated_search(list_fnc, list_kwargs, list_key)
@@ -770,8 +770,8 @@ class PaginatedBaseService(BaseService):
         :return: list<cls()>
         """
         kwargs = {cls._to_boto3_case(k): v for k, v in kwargs.items() if k not in ['list_kwargs', 'describe_kwargs']}
-        response_key = cls._boto3_describe_def.get('response_key', f'{cls.client_id}s')
-        fnc_base = camel_to_snake(cls.client_id)
+        response_key = cls._boto3_describe_def.get('response_key', f'{cls.key_prefix}s')
+        fnc_base = camel_to_snake(cls.key_prefix)
         fnc_name = cls._boto3_describe_def.get('client_call', f'describe_{fnc_base}s')
 
         client = cls._client.get(cls.boto3_service_name)
