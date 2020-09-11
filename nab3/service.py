@@ -599,3 +599,19 @@ class Pricing(PaginatedBaseService):
         ),
         response_key='PriceList'
     )
+
+
+class ElasticacheCluster(SecurityGroupMixin, PaginatedBaseService):
+    # ToDo
+    """
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/elasticache.html#ElastiCache.Client.describe_cache_clusters
+    """
+    boto3_service_name = '_______'
+    key_prefix = '_______'
+    _boto3_describe_def = dict(
+        client_call='_______',
+        call_params=dict(
+            name=dict(name='_______', type=list)  # list<str>
+        ),
+        response_key='_______'
+    )
