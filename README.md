@@ -2,7 +2,7 @@
 Put simply, nab3 provides an interface to easily inspect and search an AWS resource and its related resources.
 
 Boto3 is great for pulling information for a single resource when you know exactly what you're looking for. 
-Unfortunately, if you don't know that exact resource and need to deviate in any way the complexity to retrieve that resource is, in all honesty, insane.
+Unfortunately, if you don't know that exact resource and need to deviate in any way the complexity to retrieve that resource is, in all honesty, boto3 is insane.
 
 For example, what if you need to get the security groups for an ECS Cluster?
 >This sounds simple, and is a real world scenario I've ran into many times. 
@@ -52,4 +52,10 @@ asyncio.run(ecs_sg_example())
 ## Installation
 `pip install -U nab3` 
 
+## Getting started
+The jupyter notebooks in the examples directory contains everything you should need to get started along with details on the how and why.
 
+## Additional Documentation
+* [Contribution Guide](docs/CONTRIBUTING.md)
+* [API Reference](docs/API_REFERENCE.md)
+* [Design Decisions](docs/DESIGN_DECISIONS.md)
