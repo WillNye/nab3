@@ -59,3 +59,4 @@ The jupyter notebooks in the examples directory contains everything you should n
 * [Contribution Guide](docs/CONTRIBUTING.md)
 * [API Reference](docs/API_REFERENCE.md)
 * [Design Decisions](docs/DESIGN_DECISIONS.md)
+* [How it works](docs/HOW_IT_WORKS.md)

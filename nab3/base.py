@@ -85,12 +85,12 @@ class BaseAWS:
         return new_class
 
 
-class ServiceDescriptor:
+class ServiceWrapper:
     """A wrapper for Service objects to provide a consistent interface when dealing with 1 or more instances
 
     If you are familiar with Django this is the love child of the Field class and Queryset class.
     It provides a wrapper to filter, load, or fetch 1 or more service objects.
-    Because the instance fields are set dynamically ServiceDescriptor also:
+    Because the instance fields are set dynamically ServiceWrapper also:
         Validates the type for an instance attribute that is expected to be a Service object
         Allows attributes to behave like the object e.g. obj.service_attr.other_service_list.load()
     """
@@ -130,7 +130,7 @@ class ServiceDescriptor:
         return self.service
 
     def copy(self):
-        service_obj = ServiceDescriptor(self.service_class)
+        service_obj = ServiceWrapper(self.service_class)
         service_obj.service = self.service
         return service_obj
 
@@ -138,13 +138,13 @@ class ServiceDescriptor:
         self.name = name
 
     def __set__(self, obj, value) -> None:
-        if isinstance(value, ServiceDescriptor):
+        if isinstance(value, ServiceWrapper):
             value = value.service
         if (isinstance(value, list) and all(isinstance(elem_val, self.service_class) for elem_val in value))\
                 or (not isinstance(value, list) and isinstance(value, self.service_class)):
-            sd = ServiceDescriptor(service_class=self.service_class)
-            sd.service = value
-            obj.__dict__[self.name] = sd
+            svc_wrapper = ServiceWrapper(service_class=self.service_class)
+            svc_wrapper.service = value
+            obj.__dict__[self.name] = svc_wrapper
         else:
             raise ValueError(f'{value} != (list<{self.service_class}> || {self.service_class})')
 
@@ -159,9 +159,9 @@ class ServiceDescriptor:
 
     def __getitem__(self, item):
         if self._is_list():
-            sd = ServiceDescriptor(service_class=self.service_class)
-            sd.service = self.service[item]
-            return sd
+            svc_wrapper = ServiceWrapper(service_class=self.service_class)
+            svc_wrapper.service = self.service[item]
+            return svc_wrapper
         else:
             raise TypeError('Service class is not subscriptable')
 
@@ -389,9 +389,7 @@ class BaseService(BaseAWS):
     )
 
     def __init__(self, **kwargs):
-        client_id = getattr(self, 'client_id', None)
-        if not client_id:
-            self.client_id = self.key_prefix
+        self.client_id = getattr(self, 'client_id', self.key_prefix)
 
         for k, v in kwargs.items():
             self._set_attr(k, v)
@@ -477,7 +475,7 @@ class BaseService(BaseAWS):
 
                         obj_val = [new_class(**{cls_key: svc_val}) for svc_val in obj_val]
 
-                elif not isinstance(obj_val, ServiceDescriptor):
+                elif not isinstance(obj_val, ServiceWrapper):
                     # extract the key
                     obj_key = svc_name
                     cls_key = orig_key.replace(f"{svc_name}_", "").replace(svc_name, "")
@@ -630,7 +628,7 @@ class BaseService(BaseAWS):
         """
         if getattr(self, field_name, None) is None:
             service_class = self._get_service_class(service_class)
-            setattr(type(self), field_name, ServiceDescriptor(service_class, field_name))
+            setattr(type(self), field_name, ServiceWrapper(service_class, field_name))
 
     def fields(self):
         """The attributes for the AWS Service instances are created dynamically so this helps inspect relevant fields
@@ -650,7 +648,7 @@ class BaseService(BaseAWS):
         for k in dir(self):
             if not callable(getattr(self, k)) and not k.startswith('_'):
                 v = getattr(self, k)
-                if isinstance(v, ServiceDescriptor):
+                if isinstance(v, ServiceWrapper):
                     cluster_fields[k] = re.findall("'(.*)'", str(v.service_class))[0]
                 else:
                     cluster_fields[k] = re.findall("'(.*)'", str(type(v)))[0]
@@ -675,13 +673,13 @@ class BaseService(BaseAWS):
         return cluster_methods
 
     @classmethod
-    async def get(cls, with_related=[], **kwargs) -> ServiceDescriptor:
+    async def get(cls, with_related=[], **kwargs) -> ServiceWrapper:
         """Hits the client to set the entirety of the object using the provided lookup field.
 
         :param with_related: list of related AWS resources to return
         :return:
         """
-        resp = ServiceDescriptor(cls)
+        resp = ServiceWrapper(cls)
         obj = cls(**kwargs)
         await obj.load()
         if with_related:
@@ -717,7 +715,7 @@ class BaseService(BaseAWS):
         return [cls(_loaded=True, **obj) for obj in response]
 
     @classmethod
-    async def list(cls, fnc_name=None, response_key=None, **kwargs) -> ServiceDescriptor:
+    async def list(cls, fnc_name=None, response_key=None, **kwargs) -> ServiceWrapper:
         """Returns an instance for each object
 
         :param fnc_name:
@@ -725,7 +723,7 @@ class BaseService(BaseAWS):
         :param kwargs:
         :return: list<cls()>
         """
-        resp = ServiceDescriptor(cls)
+        resp = ServiceWrapper(cls)
         service_list = kwargs.pop('service_list', [])
 
         for boto3_def, fnc_kwargs in [(cls._boto3_list_def, 'list_kwargs'),
