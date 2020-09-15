@@ -44,7 +44,7 @@ If you're familiar with Django, its purpose is similar to QuerySet.
 When a query like `User.objects.all()` is returned in Django to get all users, the type isn't `list`, or `User` but `QuerySet`.
 
 The reason for this in nab3 is likely the same as it is in Django. The purpose is to standardize the object response and allow for helper methods.
-For example, the method `fetch` in nab3 allows to retrieve service(s) related to one or more instances of a service class as illustrated here:
+For example, the method `fetch` in nab3 will retrieve the service(s) related to one or more instances of a service class as illustrated here:
 ```python
 from nab3 import AWS as NabAWS
 
@@ -66,6 +66,7 @@ The boto3 accessor methods are:
 * load
 * list
 * fetch
+
 `get` just calls load behind the scenes.
 Each of these methods use the attributes outlined in the [contribution doc](CONTRIBUTING.md) to generate a request that is then normalized by `_recursive_normalizer` on init.
 
