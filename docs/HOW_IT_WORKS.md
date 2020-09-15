@@ -71,6 +71,7 @@ The boto3 accessor methods are:
 Each of these methods use the attributes outlined in the [contribution doc](CONTRIBUTING.md) to generate a request that is then normalized by `_recursive_normalizer` on init.
 
 In addition to the boto3 accessors, BaseService provides helper methods to inspect the service object.
+
 The methods are (which do exactly what it sounds like they do):
 * fields
 * methods
