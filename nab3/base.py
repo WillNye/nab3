@@ -55,6 +55,8 @@ class BaseAWS:
         elasticache_cluster='ElasticacheCluster',
         elasticache_node='ElasticacheNode',
         instance='EC2Instance',
+        kafka_cluster='KafkaCluster',
+        kafka_node='KafkaNode',
         launch_configuration='LaunchConfiguration',
         load_balancer='LoadBalancer',
         load_balancer_classic='LoadBalancerClassic',
