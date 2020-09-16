@@ -52,6 +52,8 @@ class BaseAWS:
         ecs_instance='ECSInstance',
         ecs_service='ECSService',
         ecs_task='ECSTask',
+        elasticache_cluster='ElasticacheCluster',
+        elasticache_node='ElasticacheNode',
         instance='EC2Instance',
         launch_configuration='LaunchConfiguration',
         load_balancer='LoadBalancer',

@@ -602,16 +602,59 @@ class Pricing(PaginatedBaseService):
 
 
 class ElasticacheCluster(SecurityGroupMixin, PaginatedBaseService):
-    # ToDo
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/elasticache.html#ElastiCache.Client.describe_cache_clusters
     """
-    boto3_service_name = '_______'
-    key_prefix = '_______'
+    boto3_service_name = 'elasticache'
+    key_prefix = 'Cache'
+    _to_boto3_case = snake_to_camelcap
     _boto3_describe_def = dict(
-        client_call='_______',
+        client_call='describe_cache_clusters',
         call_params=dict(
-            name=dict(name='_______', type=list)  # list<str>
+            id=dict(name='CacheClusterId', type=str),
+            show_node_info=dict(name='ShowCacheNodeInfo', type=bool, default=True)
         ),
-        response_key='_______'
+        response_key='CacheClusters'
     )
+    _response_alias = dict(nodes='elasticache_node')
+
+    def __init__(self, **kwargs):
+        cluster_id = kwargs.get('CacheClusterId', None)
+        if cluster_id:
+            kwargs['id'] = cluster_id
+
+        super(self._get_service_class('elasticache_cluster'), self).__init__(**kwargs)
+
+
+class ElasticacheNode(SecurityGroupMixin, PaginatedBaseService):
+    """
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/elasticache.html#ElastiCache.Client.describe_reserved_cache_nodes
+    """
+    boto3_service_name = 'elasticache'
+    key_prefix = 'CacheNode'
+    _to_boto3_case = snake_to_camelcap
+    _boto3_describe_def = dict(
+        client_call='describe_reserved_cache_nodes',
+        call_params=dict(
+            id=dict(name='ReservedCacheNodeId', type=str),
+            offering_id=dict(name='ReservedCacheNodesOfferingId', type=str),
+            type=dict(name='CacheNodeType', type=str),
+            duration=dict(name='Duration', type=str),
+            product_description=dict(name='ProductDescription', type=str),
+            offering_type=dict(name='OfferingType', type=str),
+
+        ),
+        response_key='ReservedCacheNodes'
+    )
+
+    def __init__(self, **kwargs):
+        node_id = kwargs.get('ReservedCacheNodeId', None)
+        if node_id:
+            kwargs['id'] = node_id
+
+        offering_id = kwargs.get('ReservedCacheNodesOfferingId', None)
+        if offering_id:
+            kwargs['offering_id'] = offering_id
+
+        super(self._get_service_class('elasticache_node'), self).__init__(**kwargs)
+
