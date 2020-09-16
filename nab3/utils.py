@@ -15,7 +15,8 @@ def snake_to_camelback(str_obj: str) -> str:
 
 
 def snake_to_camelcap(str_obj: str) -> str:
-    return snake_to_camelback(str_obj).title()
+    str_obj = camel_to_snake(str_obj).title()  # normalize string and add required case convention
+    return str_obj.replace('_', '')  # Remove underscores
 
 
 def paginated_search(search_fnc, search_kwargs: dict, response_key: str, max_results: int = None) -> list:

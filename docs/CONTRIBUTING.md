@@ -132,7 +132,7 @@ A response from boto3 is wrapped within a secondary dict that contains 2+ keys.
 The parameters that are passed to the boto3 call.
 > Using snake case is heavily encouraged for consistency but not required
     
-params within the dict should be structured as such `variable_name: str = dict(name:str, type:any)`.
+params within the dict should be structured as such `variable_name: str = dict(name:str, type:any, default:any=None)`.
 The purpose of this is to not only validate the request but to also perform any necessary normalization. 
 
 ### _boto3_list_def (required*)

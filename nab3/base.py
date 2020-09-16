@@ -380,12 +380,12 @@ class BaseService(BaseAWS):
     _boto3_describe_def = dict(
         # client_call: str default f'describe_{camel_to_snake(self.key_prefix)}s'
         # response_key: str default f'{self.key_prefix}s'
-        call_params=dict(),  # variable_name: str = dict(name:str, type:any)
+        call_params=dict(),  # variable_name: str = dict(name:str, type:any, default=None)
     )
     _boto3_list_def = dict(
         # client_call: str default f'list_{camel_to_snake(self.key_prefix)}s'
         # response_key: str default f'{self.key_prefix}Arns'
-        call_params=dict(),  # variable_name: str = dict(name:str, type:any)
+        call_params=dict(),  # variable_name: str = dict(name:str, type:any, default=None)
     )
 
     def __init__(self, **kwargs):
@@ -449,6 +449,8 @@ class BaseService(BaseAWS):
         svc_list_alias = self._response_alias.get(obj_key)
         if svc_list_alias:
             self.create_service_field(obj_key, svc_list_alias)
+            new_class = self._get_service_class(svc_list_alias)
+            obj_val = [new_class(**svc_instance) for svc_instance in obj_val]
             setattr(self, obj_key, obj_val)
             return
 
@@ -498,7 +500,12 @@ class BaseService(BaseAWS):
         describe_fnc = getattr(self.client, self._boto3_describe_def.get('client_call', f'describe_{fnc_base}s'))
         call_params = dict()
         for param_name, param_attrs in self._boto3_describe_def['call_params'].items():
+            default_val = param_attrs.get('default')
             value = kwargs.get(param_name, getattr(self, param_name, None))
+
+            if default_val:
+                call_params[param_attrs['name']] = default_val
+
             if value:
                 if param_attrs['type'] == list:
                     value = value if isinstance(value, list) else [value]
@@ -731,10 +738,15 @@ class BaseService(BaseAWS):
             boto3_params = boto3_def['call_params']
             kwargs[fnc_kwargs] = {}
             for param_name, param_attrs in boto3_params.items():
+                default_val = param_attrs.get('default')
                 value_list = [getattr(service, param_name, None) for service in service_list]
                 value_list = [v for v in value_list if v]
                 kwarg_val = kwargs.pop(param_name, [])
                 value_list += kwarg_val if isinstance(kwarg_val, list) else [kwarg_val]
+
+                if default_val:
+                    kwargs[param_attrs['name']] = default_val
+                    kwargs[fnc_kwargs][param_attrs['name']] = default_val
 
                 for value in value_list:
                     if value:
