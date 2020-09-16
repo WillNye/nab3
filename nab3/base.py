@@ -448,11 +448,14 @@ class BaseService(BaseAWS):
             obj_key = obj_key.replace(self.client_id, "")
 
         obj_key = camel_to_snake(obj_key)
-        svc_list_alias = self._response_alias.get(obj_key)
-        if svc_list_alias:
-            self.create_service_field(obj_key, svc_list_alias)
-            new_class = self._get_service_class(svc_list_alias)
-            obj_val = [new_class(**svc_instance) for svc_instance in obj_val]
+        svc_alias = self._response_alias.get(obj_key)
+        if svc_alias:
+            self.create_service_field(obj_key, svc_alias)
+            new_class = self._get_service_class(svc_alias)
+            if isinstance(obj_val, list):
+                obj_val = [new_class(**svc_instance) for svc_instance in obj_val]
+            else:
+                obj_val = new_class(**obj_val)
             setattr(self, obj_key, obj_val)
             return
 
