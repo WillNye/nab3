@@ -619,7 +619,7 @@ class ElasticacheCluster(SecurityGroupMixin, PaginatedBaseService):
     _response_alias = dict(nodes='elasticache_node')
 
     def __init__(self, **kwargs):
-        cluster_id = kwargs.get('CacheClusterId', None)
+        cluster_id = kwargs.pop('CacheClusterId', None)
         if cluster_id:
             kwargs['id'] = cluster_id
 
@@ -648,11 +648,11 @@ class ElasticacheNode(PaginatedBaseService):
     )
 
     def __init__(self, **kwargs):
-        node_id = kwargs.get('ReservedCacheNodeId', None)
+        node_id = kwargs.pop('ReservedCacheNodeId', None)
         if node_id:
             kwargs['id'] = node_id
 
-        offering_id = kwargs.get('ReservedCacheNodesOfferingId', None)
+        offering_id = kwargs.pop('ReservedCacheNodesOfferingId', None)
         if offering_id:
             kwargs['offering_id'] = offering_id
 
@@ -753,3 +753,97 @@ class KafkaNode(PaginatedBaseService):
     @classmethod
     async def get(cls, *args, **kwargs):
         raise NotImplementedError
+
+
+class RDSCluster(MetricMixin, PaginatedBaseService):
+    """
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/rds.html#RDS.Client.describe_db_clusters
+    """
+    boto3_service_name = 'rds'
+    key_prefix = 'DBCluster'
+    _to_boto3_case = snake_to_camelcap
+    _response_alias = dict(members='rds_instance')
+    _boto3_describe_def = dict(
+        client_call='describe_db_clusters',
+        call_params=dict(
+            id=dict(name='db_cluster_identifier', type=str),
+            filters=dict(name='filters', type=list)
+        ),
+        response_key='DBClusters'
+    )
+    """
+    Details for the filters describe kwarg
+    Structure: list(dict(Name:str, Values:list))
+
+    Supported filters per boto3:    
+    db-cluster-id - Accepts DB cluster identifiers and DB cluster Amazon Resource Names (ARNs). The results list will only include information about the DB clusters identified by these ARNs.
+    
+    The following actions can be filtered:    
+    DescribeDBClusterBacktracks
+    DescribeDBClusterEndpoints
+    DescribeDBClusters
+    DescribeDBInstances
+    DescribePendingMaintenanceActions
+    """
+
+    def __init__(self, **kwargs):
+        cluster_id = kwargs.pop('DBClusterIdentifier', None)
+        if cluster_id:
+            kwargs['id'] = cluster_id
+
+        resource_id = kwargs.pop('DbClusterResourceId', None)
+        if resource_id:
+            kwargs['resource_id'] = resource_id
+
+        super(self._get_service_class('rds_cluster'), self).__init__(**kwargs)
+
+    @property
+    def _stat_dimensions(self) -> list:
+        return [dict(Name='DBClusterIdentifier', Value=self.id)]
+
+    @property
+    def _stat_name(self) -> str:
+        return 'AWS/RDS'
+
+
+class RDSInstance(MetricMixin, PaginatedBaseService):
+    """
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/rds.html#RDS.Client.describe_db_instances
+    """
+    boto3_service_name = 'rds'
+    key_prefix = 'DBInstance'
+    _to_boto3_case = snake_to_camelcap
+    _boto3_describe_def = dict(
+        client_call='describe_db_instances',
+        call_params=dict(
+            id=dict(name='db_instance_identifier', type=str),
+            filters=dict(name='filters', type=list)
+        ),
+        response_key='DBInstances'
+    )
+    """
+    Details for the filters describe kwarg
+    Structure: list(dict(Name:str, Values:list))
+
+    Supported filters per boto3:    
+        db-cluster-id - Accepts DB cluster identifiers and DB cluster Amazon Resource Names (ARNs). The results list will only include information about the DB instances associated with the DB clusters identified by these ARNs.
+        db-instance-id - Accepts DB instance identifiers and DB instance Amazon Resource Names (ARNs). The results list will only include information about the DB instances identified by these ARNs.
+        dbi-resource-id - Accepts DB instance resource identifiers. The results list will only include information about the DB instances identified by these DB instance resource identifiers.
+        domain - Accepts Active Directory directory IDs. The results list will only include information about the DB instances associated with these domains.
+        engine - Accepts engine names. The results list will only include information about the DB instances for these engines.
+    """
+
+    def __init__(self, **kwargs):
+        instance_id = kwargs.pop('DBInstanceIdentifier', None)
+        if instance_id:
+            kwargs['id'] = instance_id
+
+        super(self._get_service_class('rds_instance'), self).__init__(**kwargs)
+
+    @property
+    def _stat_dimensions(self) -> list:
+        return [dict(Name='DBInstanceIdentifier', Value=self.id)]
+
+    @property
+    def _stat_name(self) -> str:
+        return 'AWS/RDS'

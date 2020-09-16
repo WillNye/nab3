@@ -62,6 +62,8 @@ class BaseAWS:
         load_balancer_classic='LoadBalancerClassic',
         metric='Metric',
         pricing='Pricing',
+        rds_cluster='RDSCluster',
+        rds_instance='RDSInstance',
         scaling_policy='AutoScalePolicy',
         security_group='SecurityGroup',
     )
