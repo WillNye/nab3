@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import logging
 from itertools import chain
@@ -696,6 +697,25 @@ class KafkaCluster(MetricMixin, BaseService):
         self.create_service_field('brokers', 'kafka_broker')
         super(self._get_service_class('kafka_cluster'), self).__init__(**kwargs)
 
+    async def get_topics(self) -> list:
+        """
+        NOTE: this only works if EnhancedMonitoring was set to PER_TOPIC_PER_BROKER when the cluster was created
+        :return list:
+        """
+        resp = getattr(self, 'topics', None)
+        if resp:
+            return resp
+        elif not self.brokers.is_loaded():
+            await self.fetch('brokers')
+
+        topics = set()
+        broker_topics = await asyncio.gather(*[broker.get_topics() for broker in self.brokers])
+        for topic in broker_topics:
+            topics.update(topic)
+
+        self.topics = list(topics)
+        return self.topics
+
     async def load_brokers(self):
         """Retrieves the cluster's brokers.
 
@@ -764,7 +784,7 @@ class KafkaCluster(MetricMixin, BaseService):
         return 'AWS/Kafka'
 
 
-class KafkaBroker(PaginatedBaseService):
+class KafkaBroker(MetricMixin, PaginatedBaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/kafka.html#Kafka.Client.list_nodes
     """
@@ -787,9 +807,34 @@ class KafkaBroker(PaginatedBaseService):
 
         super(self._get_service_class('kafka_broker'), self).__init__(**kwargs)
 
+    async def get_topics(self):
+        """
+        NOTE: this only works if EnhancedMonitoring was set to PER_TOPIC_PER_BROKER when the cluster was created
+        :return list:
+        """
+        resp = getattr(self, 'topics', None)
+        if resp:
+            return resp
+
+        topics = set()
+        metrics = await self.get_available_metrics()
+        for metric in metrics:
+            topics.update(dimension['value'] for dimension in metric.dimensions if dimension['name'] == 'Topic')
+
+        self.topics = list(topics)
+        return self.topics
+
     @classmethod
     async def get(cls, *args, **kwargs):
         raise NotImplementedError
+
+    @property
+    def _stat_dimensions(self) -> list:
+        return [dict(Name='Cluster Name', Value=self.cluster), dict(Name='Broker ID', Value=str(self.id))]
+
+    @property
+    def _stat_name(self) -> str:
+        return 'AWS/Kafka'
 
 
 class RDSCluster(MetricMixin, PaginatedBaseService):
