@@ -393,9 +393,18 @@ class BaseService(BaseAWS):
         # response_key: str default f'{self.key_prefix}Arns'
         call_params=dict(),  # variable_name: str = dict(name:str, type:any, default=None)
     )
+    # sometimes the boto3 response is ugly, a misrepresentation of what a key represents, or fails to align with any standard
+    # _boto3_response_override allows a top level key to be mapped to a new representation
+    # e.g. KafkaCluster.BrokerNodeGroupInfo -> KafkaCluster.brokers
+    _boto3_response_override = dict()
 
     def __init__(self, **kwargs):
         self.client_id = getattr(self, 'client_id', self.key_prefix)
+
+        for response_key, new_key in self._boto3_response_override.items():
+            val = kwargs.pop(response_key, None)
+            if val:
+                kwargs[new_key] = val
 
         for k, v in kwargs.items():
             self._set_attr(k, v)
