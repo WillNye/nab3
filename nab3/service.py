@@ -234,7 +234,7 @@ class LaunchConfiguration(PaginatedBaseService):
         self._user_data = base64.b64decode(user_data).decode("UTF-8") if user_data else user_data
 
 
-class LoadBalancer(SecurityGroupMixin, PaginatedBaseService):
+class LoadBalancer(MetricMixin, SecurityGroupMixin, PaginatedBaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/elbv2.html#ElasticLoadBalancingv2.Client.describe_load_balancers
     """
@@ -247,8 +247,17 @@ class LoadBalancer(SecurityGroupMixin, PaginatedBaseService):
         )
     )
 
+    @property
+    def _stat_dimensions(self) -> list:
+        stat_id = self.arn.split(':loadbalancer/')[-1]
+        return [dict(Name='LoadBalancer', Value=stat_id)]
 
-class LoadBalancerClassic(SecurityGroupMixin, PaginatedBaseService):
+    @property
+    def _stat_name(self) -> str:
+        return 'AWS/ApplicationELB'
+
+
+class LoadBalancerClassic(MetricMixin, SecurityGroupMixin, PaginatedBaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/elbv2.html#ElasticLoadBalancingv2.Client.describe_load_balancers
     """
@@ -261,6 +270,14 @@ class LoadBalancerClassic(SecurityGroupMixin, PaginatedBaseService):
         ),
         response_key='LoadBalancerDescriptions'
     )
+
+    @property
+    def _stat_dimensions(self) -> list:
+        return [dict(Name='LoadBalancerName', Value=self.name)]
+
+    @property
+    def _stat_name(self) -> str:
+        return 'AWS/ELB'
 
 
 class EC2Instance(PaginatedBaseService):
@@ -601,7 +618,7 @@ class Pricing(PaginatedBaseService):
     )
 
 
-class ElasticacheCluster(SecurityGroupMixin, PaginatedBaseService):
+class ElasticacheCluster(MetricMixin, SecurityGroupMixin, PaginatedBaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/elasticache.html#ElastiCache.Client.describe_cache_clusters
     """
@@ -617,13 +634,15 @@ class ElasticacheCluster(SecurityGroupMixin, PaginatedBaseService):
         response_key='CacheClusters'
     )
     _response_alias = dict(nodes='elasticache_node')
+    _boto3_response_override = dict(CacheClusterId='id')
 
-    def __init__(self, **kwargs):
-        cluster_id = kwargs.pop('CacheClusterId', None)
-        if cluster_id:
-            kwargs['id'] = cluster_id
+    @property
+    def _stat_dimensions(self) -> list:
+        return [dict(Name='CacheClusterId', Value=self.name)]
 
-        super(self._get_service_class('elasticache_cluster'), self).__init__(**kwargs)
+    @property
+    def _stat_name(self) -> str:
+        return 'AWS/ElastiCache'
 
 
 class ElasticacheNode(PaginatedBaseService):
@@ -646,17 +665,7 @@ class ElasticacheNode(PaginatedBaseService):
         ),
         response_key='ReservedCacheNodes'
     )
-
-    def __init__(self, **kwargs):
-        node_id = kwargs.pop('ReservedCacheNodeId', None)
-        if node_id:
-            kwargs['id'] = node_id
-
-        offering_id = kwargs.pop('ReservedCacheNodesOfferingId', None)
-        if offering_id:
-            kwargs['offering_id'] = offering_id
-
-        super(self._get_service_class('elasticache_node'), self).__init__(**kwargs)
+    _boto3_response_override = dict(ReservedCacheNodeId='id', ReservedCacheNodesOfferingId='offering_id')
 
 
 class KafkaCluster(MetricMixin, BaseService):
@@ -681,7 +690,27 @@ class KafkaCluster(MetricMixin, BaseService):
         ),
         response_key='ClusterInfoList'
     )
-    _response_alias = dict(broker_node_group_info='kafka_node')
+    _boto3_response_override = dict(BrokerNodeGroupInfo='broker_summary')
+
+    def __init__(self, **kwargs):
+        self.create_service_field('brokers', 'kafka_broker')
+        super(self._get_service_class('kafka_cluster'), self).__init__(**kwargs)
+
+    async def load_brokers(self):
+        """Retrieves the cluster's brokers.
+
+        stored as the instance attribute `obj.brokers`
+
+        :return: ServiceWrapper(KafkaBroker)
+        """
+        if self.brokers.loaded:
+            return self.brokers
+
+        self.brokers = await self.brokers.list(cluster_arn=self.arn)
+        for broker in self.brokers:
+            broker.cluster = self.name
+
+        return self.brokers
 
     @classmethod
     async def list(cls, fnc_name=None, response_key=None, **kwargs) -> ServiceWrapper:
@@ -728,14 +757,14 @@ class KafkaCluster(MetricMixin, BaseService):
 
     @property
     def _stat_dimensions(self) -> list:
-        return [dict(Name='ClusterName', Value=self.name)]
+        return [dict(Name='Cluster Name', Value=self.name)]
 
     @property
     def _stat_name(self) -> str:
         return 'AWS/Kafka'
 
 
-class KafkaNode(PaginatedBaseService):
+class KafkaBroker(PaginatedBaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/kafka.html#Kafka.Client.list_nodes
     """
@@ -749,6 +778,14 @@ class KafkaNode(PaginatedBaseService):
         ),
         response_key='NodeInfoList'
     )
+    _boto3_response_override = dict(BrokerId='id', AttachedENIId='attached_en_id', ZookeeperNodeInfo='zookeeper_info')
+
+    def __init__(self, **kwargs):
+        broker_info = kwargs.pop('BrokerNodeInfo', None)
+        if isinstance(broker_info, dict):
+            kwargs = {**kwargs, **broker_info}
+
+        super(self._get_service_class('kafka_broker'), self).__init__(**kwargs)
 
     @classmethod
     async def get(cls, *args, **kwargs):
@@ -762,6 +799,7 @@ class RDSCluster(MetricMixin, PaginatedBaseService):
     boto3_service_name = 'rds'
     key_prefix = 'DBCluster'
     _to_boto3_case = snake_to_camelcap
+    _boto3_response_override = dict(DBClusterIdentifier='id', DbClusterResourceId='resource_id')
     _response_alias = dict(members='rds_instance')
     _boto3_describe_def = dict(
         client_call='describe_db_clusters',
@@ -786,17 +824,6 @@ class RDSCluster(MetricMixin, PaginatedBaseService):
     DescribePendingMaintenanceActions
     """
 
-    def __init__(self, **kwargs):
-        cluster_id = kwargs.pop('DBClusterIdentifier', None)
-        if cluster_id:
-            kwargs['id'] = cluster_id
-
-        resource_id = kwargs.pop('DbClusterResourceId', None)
-        if resource_id:
-            kwargs['resource_id'] = resource_id
-
-        super(self._get_service_class('rds_cluster'), self).__init__(**kwargs)
-
     @property
     def _stat_dimensions(self) -> list:
         return [dict(Name='DBClusterIdentifier', Value=self.id)]
@@ -813,6 +840,7 @@ class RDSInstance(MetricMixin, PaginatedBaseService):
     boto3_service_name = 'rds'
     key_prefix = 'DBInstance'
     _to_boto3_case = snake_to_camelcap
+    _boto3_response_override = dict(DBInstanceIdentifier='id')
     _boto3_describe_def = dict(
         client_call='describe_db_instances',
         call_params=dict(
@@ -832,13 +860,6 @@ class RDSInstance(MetricMixin, PaginatedBaseService):
         domain - Accepts Active Directory directory IDs. The results list will only include information about the DB instances associated with these domains.
         engine - Accepts engine names. The results list will only include information about the DB instances for these engines.
     """
-
-    def __init__(self, **kwargs):
-        instance_id = kwargs.pop('DBInstanceIdentifier', None)
-        if instance_id:
-            kwargs['id'] = instance_id
-
-        super(self._get_service_class('rds_instance'), self).__init__(**kwargs)
 
     @property
     def _stat_dimensions(self) -> list:
