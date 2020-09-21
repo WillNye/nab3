@@ -53,7 +53,10 @@ asyncio.run(ecs_sg_example())
 `pip install -U nab3` 
 
 ## Getting started
-The jupyter notebooks in the examples directory contains everything you should need to get started along with details on the how and why.
+The jupyter notebooks in the examples directory contains everything you should need.
+Each notebook contains details on the how and why.
+
+Begin with the [getting_started notebook](examples/getting_started.ipynb).
 
 ## Additional Documentation
 * [Contribution Guide](docs/CONTRIBUTING.md)
