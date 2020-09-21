@@ -21,7 +21,7 @@ class AppAutoScaleMixin:
         if self.scaling_policies.loaded:
             return self.scaling_policies
 
-        self.scaling_policies = await self.scaling_policies.list(service_namespace=self.boto3_service_name,
+        self.scaling_policies = await self.scaling_policies.list(service_namespace=self.boto3_client_name,
                                                                  resource_id=self.resource_id)
         return self.scaling_policies
 

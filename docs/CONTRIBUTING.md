@@ -62,10 +62,10 @@ This will be somewhere in `boto3.amazonaws.com/v1/documentation/api/latest/refer
 
 ## Class variables
 
-### boto3_service_name (required)
+### boto3_client_name (required)
 The value used when creating the boto3 client.
 
-For example, if the describe operation for a service class would typically require something like `client = boto3.client('autoscaling')`. Then `boto3_service_name = 'autoscaling'`
+For example, if the describe operation for a service class would typically require something like `client = boto3.client('autoscaling')`. Then `boto3_client_name = 'autoscaling'`
 
 ### key_prefix (required)
 The prefix used to identify a service from a related service's boto3 response.

@@ -369,7 +369,7 @@ class BaseService(BaseAWS):
     """
     https://boto3.amazonaws.com/v1/documentation/api/latest/index.html
     """
-    boto3_service_name: str
+    boto3_client_name: str
     key_prefix: str
     client_id: str
     """_response_alias maps each element in the list to a service class.
@@ -410,7 +410,7 @@ class BaseService(BaseAWS):
 
     @property
     def client(self):
-        return self._client.get(self.boto3_service_name)
+        return self._client.get(self.boto3_client_name)
 
     @property
     def loaded(self):
@@ -720,7 +720,7 @@ class BaseService(BaseAWS):
         :return: list<cls()>
         """
         fnc_base = camel_to_snake(cls.key_prefix)
-        client = cls._client.get(cls.boto3_service_name)
+        client = cls._client.get(cls.boto3_client_name)
         list_fnc = getattr(client, cls._boto3_list_def.get('client_call', f'list_{fnc_base}s'))
         describe_fnc = getattr(client, cls._boto3_describe_def.get('client_call', f'describe_{fnc_base}s'))
         list_key = cls._boto3_list_def.get('response_key', f'{cls.key_prefix}Arns')
@@ -778,7 +778,7 @@ class BaseService(BaseAWS):
 
         if fnc_name and response_key:
             kwargs = {cls._to_boto3_case(k): v for k, v in kwargs.items()}
-            client = cls._client.get(cls.boto3_service_name)
+            client = cls._client.get(cls.boto3_client_name)
             boto3_fnc = getattr(client, fnc_name)
             response = paginated_search(boto3_fnc, kwargs, response_key)
             resp.service = [cls(_loaded=True, **obj) for obj in response]
@@ -802,7 +802,7 @@ class PaginatedBaseService(BaseService):
         fnc_base = camel_to_snake(cls.key_prefix)
         fnc_name = cls._boto3_describe_def.get('client_call', f'describe_{fnc_base}s')
 
-        client = cls._client.get(cls.boto3_service_name)
+        client = cls._client.get(cls.boto3_client_name)
         boto3_fnc = getattr(client, fnc_name)
         response = paginated_search(boto3_fnc, kwargs, response_key)
         return [cls(_loaded=True, **obj) for obj in response]

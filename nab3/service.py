@@ -15,7 +15,7 @@ class Alarm(PaginatedBaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/cloudwatch.html#CloudWatch.Client.describe_alarm_history
     """
-    boto3_service_name = 'cloudwatch'
+    boto3_client_name = 'cloudwatch'
     key_prefix = 'Alarm'
 
     @classmethod
@@ -37,7 +37,7 @@ class Alarm(PaginatedBaseService):
         if item_type:
             search_kwargs['HistoryItemType'] = item_type
 
-        search_fnc = cls._client.get(cls.boto3_service_name).describe_alarm_history
+        search_fnc = cls._client.get(cls.boto3_client_name).describe_alarm_history
         results = paginated_search(search_fnc, search_kwargs, 'AlarmHistoryItems')
         return [cls(_loaded=True, **result) for result in results]
 
@@ -48,7 +48,7 @@ class Metric(PaginatedBaseService):
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/cloudwatch.html#CloudWatch.Client.get_metric_statistics
     docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/cloudwatch_concepts.html#dimension-combinations
     """
-    boto3_service_name = 'cloudwatch'
+    boto3_client_name = 'cloudwatch'
     key_prefix = 'Metric'
     _boto3_describe_def = dict(
         client_call="list_metrics",
@@ -95,7 +95,7 @@ class Metric(PaginatedBaseService):
         for k, v in kwargs.items():
             search_kwargs[snake_to_camelcap(k)] = v
 
-        client = cls._client.get(cls.boto3_service_name)
+        client = cls._client.get(cls.boto3_client_name)
         response = client.get_metric_statistics(**search_kwargs)
         return [cls(name=metric_name, _loaded=True, **obj) for obj in response.get('Datapoints', [])]
 
@@ -112,7 +112,7 @@ class AutoScalePolicy(PaginatedBaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/autoscaling.html#AutoScaling.Client.describe_policies
     """
-    boto3_service_name = 'autoscaling'
+    boto3_client_name = 'autoscaling'
     key_prefix = 'Policy'
     _boto3_describe_def = dict(
         client_call='describe_policies',
@@ -164,7 +164,7 @@ class AppAutoScalePolicy(PaginatedBaseService):
         cassandra:table:ReadCapacityUnits
         cassandra:table:WriteCapacityUnits
     """
-    boto3_service_name = 'application-autoscaling'
+    boto3_client_name = 'application-autoscaling'
     key_prefix = 'Policy'
     _boto3_describe_def = dict(
         client_call='describe_scaling_policies',
@@ -199,7 +199,7 @@ class SecurityGroup(PaginatedBaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_security_groups
     """
-    boto3_service_name = 'ec2'
+    boto3_client_name = 'ec2'
     key_prefix = 'SecurityGroup'
     client_id = 'Group'
     _boto3_describe_def = dict(
@@ -217,7 +217,7 @@ class LaunchConfiguration(PaginatedBaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/autoscaling.html#AutoScaling.Client.describe_launch_configurations
     """
-    boto3_service_name = 'autoscaling'
+    boto3_client_name = 'autoscaling'
     key_prefix = 'LaunchConfiguration'
     _boto3_describe_def = dict(
         call_params=dict(
@@ -239,7 +239,7 @@ class LoadBalancer(MetricMixin, SecurityGroupMixin, PaginatedBaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/elbv2.html#ElasticLoadBalancingv2.Client.describe_load_balancers
     """
-    boto3_service_name = 'elbv2'
+    boto3_client_name = 'elbv2'
     key_prefix = 'LoadBalancer'
     _boto3_describe_def = dict(
         call_params=dict(
@@ -262,7 +262,7 @@ class LoadBalancerClassic(MetricMixin, SecurityGroupMixin, PaginatedBaseService)
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/elbv2.html#ElasticLoadBalancingv2.Client.describe_load_balancers
     """
-    boto3_service_name = 'elb'
+    boto3_client_name = 'elb'
     key_prefix = 'LoadBalancer'
     _boto3_describe_def = dict(
         client_call='describe_load_balancers',
@@ -285,7 +285,7 @@ class EC2Instance(PaginatedBaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_instances
     """
-    boto3_service_name = 'ec2'
+    boto3_client_name = 'ec2'
     key_prefix = 'Instance'
     _boto3_describe_def = dict(
         call_params=dict(
@@ -303,7 +303,7 @@ class EC2Instance(PaginatedBaseService):
         :return:
         """
         search_kwargs = dict(Filters=filters, InstanceIds=instance_ids)
-        search_fnc = cls._client.get(cls.boto3_service_name).describe_instances
+        search_fnc = cls._client.get(cls.boto3_client_name).describe_instances
         results = paginated_search(search_fnc, search_kwargs, 'Reservations')
         instances = list(chain.from_iterable([obj['Instances'] for obj in results]))
         return [cls(_loaded=True, **result) for result in instances]
@@ -326,7 +326,7 @@ class ASG(SecurityGroupMixin, AutoScaleMixin, MetricMixin, PaginatedBaseService)
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/autoscaling.html#AutoScaling.Client.describe_auto_scaling_groups
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/autoscaling.html#AutoScaling.Client.describe_launch_configurations
     """
-    boto3_service_name = 'autoscaling'
+    boto3_client_name = 'autoscaling'
     key_prefix = 'AutoScalingGroup'
     _boto3_describe_def = dict(
         call_params=dict(
@@ -362,7 +362,7 @@ class ASG(SecurityGroupMixin, AutoScaleMixin, MetricMixin, PaginatedBaseService)
         :return:
         """
         if instance_id:
-            client = cls._client.get(cls.boto3_service_name)
+            client = cls._client.get(cls.boto3_client_name)
             response = client.describe_auto_scaling_instances(
                 InstanceIds=[instance_id]
             )['AutoScalingInstances']
@@ -392,7 +392,7 @@ class ECSTask(BaseService):
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.list_tasks
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.describe_tasks
     """
-    boto3_service_name = 'ecs'
+    boto3_client_name = 'ecs'
     key_prefix = 'task'
     _boto3_describe_def = dict(
         client_call="list_metrics",
@@ -421,7 +421,7 @@ class ECSService(MetricMixin, AppAutoScaleMixin, BaseService):
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.list_services
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.describe_services
     """
-    boto3_service_name = 'ecs'
+    boto3_client_name = 'ecs'
     key_prefix = 'service'
     _boto3_describe_def = dict(
         call_params=dict(
@@ -473,7 +473,7 @@ class ECSInstance(BaseService):
         DEREGISTERING
         REGISTRATION_FAILED
     """
-    boto3_service_name = 'ecs'
+    boto3_client_name = 'ecs'
     key_prefix = 'containerInstance'
     _boto3_describe_def = dict(
         call_params=dict(
@@ -496,7 +496,7 @@ class ECSCluster(AutoScaleMixin, MetricMixin, BaseService):
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.list_clusters
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.describe_clusters
     """
-    boto3_service_name = 'ecs'
+    boto3_client_name = 'ecs'
     key_prefix = 'cluster'
     _boto3_describe_def = dict(
         call_params=dict(
@@ -607,7 +607,7 @@ class Pricing(PaginatedBaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/pricing.html#Pricing.Client.get_products
     """
-    boto3_service_name = 'pricing'
+    boto3_client_name = 'pricing'
     key_prefix = 'product'
     _boto3_describe_def = dict(
         client_call='get_products',
@@ -623,7 +623,7 @@ class ElasticacheCluster(MetricMixin, SecurityGroupMixin, PaginatedBaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/elasticache.html#ElastiCache.Client.describe_cache_clusters
     """
-    boto3_service_name = 'elasticache'
+    boto3_client_name = 'elasticache'
     key_prefix = 'Cache'
     _to_boto3_case = snake_to_camelcap
     _boto3_describe_def = dict(
@@ -650,7 +650,7 @@ class ElasticacheNode(PaginatedBaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/elasticache.html#ElastiCache.Client.describe_reserved_cache_nodes
     """
-    boto3_service_name = 'elasticache'
+    boto3_client_name = 'elasticache'
     key_prefix = 'CacheNode'
     _to_boto3_case = snake_to_camelcap
     _boto3_describe_def = dict(
@@ -674,7 +674,7 @@ class KafkaCluster(MetricMixin, BaseService):
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/kafka.html#Kafka.Client.describe_cluster
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/kafka.html#Kafka.Client.list_clusters
     """
-    boto3_service_name = 'kafka'
+    boto3_client_name = 'kafka'
     key_prefix = 'Cluster'
     _to_boto3_case = snake_to_camelcap
     _boto3_describe_def = dict(
@@ -768,7 +768,7 @@ class KafkaCluster(MetricMixin, BaseService):
                         kwargs[param_attrs['name']] = value
 
         kwargs = {cls._to_boto3_case(k): v for k, v in kwargs.items()}
-        client = cls._client.get(cls.boto3_service_name)
+        client = cls._client.get(cls.boto3_client_name)
         boto3_fnc = getattr(client, fnc_name)
         response = paginated_search(boto3_fnc, kwargs, response_key)
         resp.service = [cls(_loaded=True, **obj) for obj in response]
@@ -788,7 +788,7 @@ class KafkaBroker(MetricMixin, PaginatedBaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/kafka.html#Kafka.Client.list_nodes
     """
-    boto3_service_name = 'kafka'
+    boto3_client_name = 'kafka'
     key_prefix = 'Node'
     _to_boto3_case = snake_to_camelcap
     _boto3_describe_def = dict(
@@ -841,7 +841,7 @@ class RDSCluster(MetricMixin, PaginatedBaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/rds.html#RDS.Client.describe_db_clusters
     """
-    boto3_service_name = 'rds'
+    boto3_client_name = 'rds'
     key_prefix = 'DBCluster'
     _to_boto3_case = snake_to_camelcap
     _boto3_response_override = dict(DBClusterIdentifier='id', DbClusterResourceId='resource_id')
@@ -882,7 +882,7 @@ class RDSInstance(MetricMixin, PaginatedBaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/rds.html#RDS.Client.describe_db_instances
     """
-    boto3_service_name = 'rds'
+    boto3_client_name = 'rds'
     key_prefix = 'DBInstance'
     _to_boto3_case = snake_to_camelcap
     _boto3_response_override = dict(DBInstanceIdentifier='id')
