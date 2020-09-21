@@ -53,15 +53,15 @@ def md_security_group_table(sg_list: list, id_filter: list = [], is_accessible_r
         return generate_md_table_str(row_list=rows, headers=headers)
 
 
-def md_autoscale_sgs(asg_object):
-    security_groups = [sg for sg in asg_object.security_groups if sg.name != 'unix-admin']
+def md_sg_summary(service_object):
+    security_groups = [sg for sg in service_object.security_groups if sg.name != 'unix-admin']
     if not security_groups:
         return ""
 
     sg_str_list = [f'{sg.name} ({sg.id})' for sg in security_groups]
     md_output = f"### Security Groups:\n{generate_md_bullet_str(sg_str_list)}\n"
     sg_table = md_security_group_table(security_groups)
-    resource_table = md_security_group_table(asg_object.accessible_resources, [sg.id for sg in security_groups], True)
+    resource_table = md_security_group_table(service_object.accessible_resources, [sg.id for sg in security_groups], True)
 
     if sg_table:
         md_output += f"#### Rule Summary\n{sg_table}\n"
