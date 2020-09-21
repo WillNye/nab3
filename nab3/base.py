@@ -74,19 +74,18 @@ class BaseAWS:
 
     def _get_service_class(self, service_name):
         service_class = self._service_map[service_name]
-        class_ref = getattr(sys.modules['nab3.service'], service_class)
-        class_name = f'{service_class}x{str(id(self._service_map))}'
+        class_name = f'{service_class}_x{str(id(self._client))}'
         loaded_service = self.loaded_service_classes.get(class_name)
         if loaded_service:
             return loaded_service
 
+        class_ref = getattr(sys.modules['nab3.service'], service_class)
         new_class = type(
             class_name,
             class_ref.__bases__,
-            dict(class_ref.__dict__)
+            dict(class_ref.__dict__, **dict(_client=self._client))
         )
         self.loaded_service_classes[class_name] = new_class
-        new_class._client = self._client
 
         return new_class
 
