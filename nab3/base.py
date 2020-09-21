@@ -330,7 +330,7 @@ class Filter:
                 elif operation == 'gte':
                     return service_obj, bool(service_obj >= filter_value)
                 else:
-                    raise KeyError(f'{operation} is not a valid Filter operation.\nOptions: {self.get_operations()}')
+                    raise KeyError(f'{operation} is not a valid Filter operation.\nOptions: {self.operations()}')
             except Exception as e:
                 LOGGER.warning(str(e))
                 return service_obj, False
@@ -351,18 +351,12 @@ class Filter:
         return service_obj
 
     @staticmethod
-    def get_operations():
-        return [
-            're',
-            'contains',
-            'icontains',
-            'exact',
-            'iexact',
-            'lt',
-            'lte',
-            'gt',
-            'gte'
-        ]
+    def operations():
+        base_operations = ['re', 'contains', 'icontains', 'exact', 'iexact']
+        all_operations = ['lt', 'lte', 'gt', 'gte'] + base_operations
+        all_operations += [f'{base_op}_any' for base_op in base_operations]
+        all_operations += [f'{base_op}_all' for base_op in base_operations]
+        return sorted(all_operations)
 
 
 class BaseService(BaseAWS):
@@ -787,6 +781,22 @@ class BaseService(BaseAWS):
 
         return resp
 
+    @classmethod
+    def get_params(cls) -> list:
+        resp = []
+        for arg_name, arg_def in cls._boto3_describe_def['call_params'].items():
+            resp.append(dict(name=arg_name, type=str(arg_def['type'])))
+
+        return resp
+
+    @classmethod
+    def list_params(cls) -> list:
+        resp = []
+        for arg_name, arg_def in cls._boto3_list_def['call_params'].items():
+            resp.append(dict(name=arg_name, type=str(arg_def['type'])))
+
+        return resp
+
 
 class PaginatedBaseService(BaseService):
 
@@ -806,4 +816,8 @@ class PaginatedBaseService(BaseService):
         boto3_fnc = getattr(client, fnc_name)
         response = paginated_search(boto3_fnc, kwargs, response_key)
         return [cls(_loaded=True, **obj) for obj in response]
+
+    @classmethod
+    def list_params(cls) -> list:
+        return cls.get_params()
 
