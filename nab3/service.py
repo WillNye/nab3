@@ -211,6 +211,7 @@ class SecurityGroup(PaginatedBaseService):
     )
     _to_boto3_case = snake_to_camelcap
     _response_alias = dict(user_id_group_pairs='security_group')
+    _boto3_response_override = dict(SecurityGroupId='id')
 
 
 class LaunchConfiguration(PaginatedBaseService):
@@ -635,11 +636,13 @@ class ElasticacheCluster(MetricMixin, SecurityGroupMixin, PaginatedBaseService):
         response_key='CacheClusters'
     )
     _response_alias = dict(nodes='elasticache_node')
-    _boto3_response_override = dict(CacheClusterId='id')
+    _boto3_response_override = dict(CacheClusterId='id',
+                                    CacheClusterCreateTime='create_time',
+                                    CacheClusterStatus='status')
 
     @property
     def _stat_dimensions(self) -> list:
-        return [dict(Name='CacheClusterId', Value=self.name)]
+        return [dict(Name='CacheClusterId', Value=self.id)]
 
     @property
     def _stat_name(self) -> str:
