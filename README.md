@@ -50,7 +50,7 @@ asyncio.run(ecs_sg_example())
 * Comprehensive filter operations on an AWS response
 
 ## Installation
-`pip install -U nab3` 
+`pip3 install -U nab3` 
 
 ## Getting started
 The jupyter notebooks in the examples directory contains everything you should need.
