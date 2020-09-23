@@ -1,6 +1,6 @@
 import logging
 
-from nab3.mixin import AppAutoScaleMixin, AutoScaleMixin, MetricMixin
+from nab3.mixin import AppAutoScaleMixin, AutoScaleMixin, MetricMixin, SecurityGroupMixin
 from nab3.base import BaseService
 
 LOGGER = logging.getLogger('nab3')
@@ -111,7 +111,7 @@ class ECSInstance(BaseService):
     )
 
 
-class ECSCluster(AutoScaleMixin, MetricMixin, BaseService):
+class ECSCluster(AutoScaleMixin, MetricMixin, SecurityGroupMixin, BaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.list_clusters
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecs.html#ECS.Client.describe_clusters
@@ -178,6 +178,14 @@ class ECSCluster(AutoScaleMixin, MetricMixin, BaseService):
             return self.instances
         self.instances = await self.instances.list(cluster=self.name)
         return self.instances
+
+    async def load_security_groups(self):
+        if self.security_groups.loaded:
+            return self.security_groups
+
+        await self.fetch('asg__security_groups')
+        self.security_groups = self.asg.security_groups
+        return self.security_groups
 
     async def load_services(self):
         """Retrieves the cluster's services.
