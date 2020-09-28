@@ -62,6 +62,39 @@ class SecurityGroupMixin:
         return self.accessible_resources
 
 
+class PricingMixin:
+    def __init__(self, **kwargs):
+        self.create_service_field('pricing', 'pricing')
+        super().__init__(**kwargs)
+
+    async def load_pricing(self):
+        if self.pricing.is_loaded():
+            return self.pricing.get_region(self.client.region)
+
+        pricing = await self.pricing.list(**self._pricing_params)
+        if len(pricing) > 0:
+            self.pricing = pricing[0]
+
+        return self.pricing
+
+    async def get_on_demand_hourly(self, currency='usd'):
+        if not self.pricing.is_loaded():
+            await self.fetch('pricing')
+
+        return self.pricing.get_on_demand_hourly(currency)
+
+    async def get_on_demand_monthly(self, currency='usd'):
+        if not self.pricing.is_loaded():
+            await self.fetch('pricing')
+
+        return self.pricing.get_on_demand_monthly(currency)
+
+    @property
+    def _pricing_params(self) -> dict:
+        # returns dict(service_code=str, filters=list(dict(Field=str, Value=str, Type=str)))
+        raise NotImplementedError
+
+
 class MetricMixin:
     _available_metrics = False
 

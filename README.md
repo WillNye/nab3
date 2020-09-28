@@ -1,8 +1,9 @@
 # nab3 (Not Another Boto3)
-Put simply, nab3 provides an interface to easily inspect and search an AWS resource and its related resources.
+nab3 is an async boto3 ORM. 
+It provides an interface to easily inspect and search an AWS resource and its related resources.
 
 Boto3 is great for pulling information for a single resource when you know exactly what you're looking for. 
-Unfortunately, if you don't know that exact resource and need to deviate in any way the complexity to retrieve that resource is, in all honesty, boto3 is insane.
+Unfortunately, if you don't know that exact resource and need to deviate in any way the complexity to retrieve that resource is, in all honesty, insane.
 
 For example, what if you need to get the security groups for an ECS Cluster?
 >This sounds simple, and is a real world scenario I've ran into many times. 
@@ -29,7 +30,7 @@ from nab3 import AWS
 
 
 async def ecs_sg_example():
-    ecs_cluster = await aws.ecs_cluster.get(name='cluster-name', with_related=['asg__security_groups'])
+    ecs_cluster = await aws.ecs_cluster.get(name='cluster-name', with_related=['security_groups'])
     print([sg.name for sg in ecs_cluster.security_groups])
 
 

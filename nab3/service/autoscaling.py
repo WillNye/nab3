@@ -1,8 +1,9 @@
 import base64
 import logging
 
-from nab3.mixin import AutoScaleMixin, MetricMixin, SecurityGroupMixin
+from nab3.mixin import AutoScaleMixin, MetricMixin, PricingMixin, SecurityGroupMixin
 from nab3.base import PaginatedBaseService
+from nab3.utils import PRICING_REGION_MAP
 
 LOGGER = logging.getLogger('nab3')
 LOGGER.setLevel(logging.WARNING)
@@ -117,7 +118,7 @@ class LaunchConfiguration(PaginatedBaseService):
         self._user_data = base64.b64decode(user_data).decode("UTF-8") if user_data else user_data
 
 
-class ASG(SecurityGroupMixin, AutoScaleMixin, MetricMixin, PaginatedBaseService):
+class ASG(AutoScaleMixin, MetricMixin, PricingMixin, SecurityGroupMixin, PaginatedBaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/autoscaling.html#AutoScaling.Client.describe_auto_scaling_groups
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/autoscaling.html#AutoScaling.Client.describe_launch_configurations
@@ -129,6 +130,33 @@ class ASG(SecurityGroupMixin, AutoScaleMixin, MetricMixin, PaginatedBaseService)
             name=dict(name='AutoScalingGroupNames', type=list),
         )
     )
+
+    async def get_on_demand_monthly(self, currency='usd'):
+        if not self.pricing.is_loaded():
+            await self.fetch('pricing')
+
+        per_instance = self.pricing.get_on_demand_monthly(currency)
+        return per_instance * len(self.instances)
+
+    async def get_on_demand_hourly(self, currency='usd'):
+        if not self.pricing.is_loaded():
+            await self.fetch('pricing')
+
+        per_instance = self.pricing.get_on_demand_hourly(currency)
+        return per_instance * len(self.instances)
+
+    async def load_pricing(self):
+        if self.pricing.is_loaded():
+            return self.pricing
+
+        if not self.instances.is_loaded():
+            await self.fetch('instances')
+
+        pricing = await self.pricing.list(**self._pricing_params)
+        if len(pricing) > 0:
+            self.pricing = pricing[0]
+
+        return self.pricing
 
     async def load_security_groups(self):
         """Retrieves the instances related security groups.
@@ -181,3 +209,20 @@ class ASG(SecurityGroupMixin, AutoScaleMixin, MetricMixin, PaginatedBaseService)
     @property
     def _stat_name(self) -> str:
         return 'AWS/EC2'
+
+    @property
+    def _pricing_params(self) -> dict:
+        if self.instances.is_loaded():
+            instance = self.instances[0]
+            os = getattr(instance, 'Platform', None)
+            return dict(service_code='AmazonEC2',
+                        filters=[
+                            {'Field': 'tenancy', 'Value': 'shared', 'Type': 'TERM_MATCH'},
+                            {'Field': 'operatingSystem', 'Value': os if os else 'Linux', 'Type': 'TERM_MATCH'},
+                            {'Field': 'preInstalledSw', 'Value': 'NA', 'Type': 'TERM_MATCH'},
+                            {'Field': 'instanceType', 'Value': instance.type, 'Type': 'TERM_MATCH'},
+                            {'Field': 'location', 'Value': PRICING_REGION_MAP[self.region], 'Type': 'TERM_MATCH'},
+                            {'Field': 'capacitystatus', 'Value': 'Used', 'Type': 'TERM_MATCH'}
+                        ])
+        return {}
+

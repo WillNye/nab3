@@ -75,7 +75,8 @@ async def md_alarms(scalable_object, start_date=dt.now()-timedelta(days=30), end
 async def set_service_stats(service_obj,
                             stat_list: list = None,
                             start_date=dt.now()-timedelta(days=30),
-                            end_date=dt.now()):
+                            end_date=dt.now(),
+                            interval_as_seconds=1800):  # 30 minutes
     """Retrieves all statistics passed in stat_list for the service_obj.
 
     service_obj.stats = [dict(metric=str, stats=Metric())]
@@ -84,6 +85,7 @@ async def set_service_stats(service_obj,
     :param stat_list:
     :param start_date:
     :param end_date:
+    :param interval_as_seconds:
     :return: service_obj
     """
     async def _stat(metric):
@@ -91,7 +93,7 @@ async def set_service_stats(service_obj,
                                           statistics=['Average', 'Maximum'],
                                           start_time=start_date,
                                           end_time=end_date,
-                                          interval_as_seconds=1800)  # 30 minutes
+                                          interval_as_seconds=interval_as_seconds)  # 30 minutes
 
     stat_list = stat_list if stat_list else ['CPUUtilization', 'MemoryUtilization']
     service_obj.stats_list = await asyncio.gather(*[_stat(metric) for metric in stat_list])
@@ -101,7 +103,8 @@ async def set_service_stats(service_obj,
 async def set_n_service_stats(service_list,
                               stat_list: list = None,
                               start_date=dt.now()-timedelta(days=30),
-                              end_date=dt.now()):
+                              end_date=dt.now(),
+                              interval_as_seconds=1800):  # 30 minutes
     """Retrieves all statistics passed in stat_list for each of the provided services in service_list.
 
     For each in service_list: service_obj.stats = [dict(metric=str, stats=Metric())]
@@ -110,9 +113,11 @@ async def set_n_service_stats(service_list,
     :param stat_list:
     :param start_date:
     :param end_date:
+    :param interval_as_seconds:
     :return: service_list
     """
     return await asyncio.gather(*[
-        set_service_stats(service_obj, stat_list, start_date, end_date) for service_obj in service_list
+        set_service_stats(service_obj, stat_list, start_date, end_date, interval_as_seconds)
+        for service_obj in service_list
     ])
 

@@ -1,8 +1,9 @@
 import logging
 from itertools import chain
 
+from nab3.mixin import MetricMixin, PricingMixin
 from nab3.base import PaginatedBaseService
-from nab3.utils import paginated_search, snake_to_camelcap
+from nab3.utils import paginated_search, PRICING_REGION_MAP, snake_to_camelcap
 
 LOGGER = logging.getLogger('nab3')
 LOGGER.setLevel(logging.WARNING)
@@ -27,7 +28,7 @@ class SecurityGroup(PaginatedBaseService):
     _boto3_response_override = dict(SecurityGroupId='id')
 
 
-class EC2Instance(PaginatedBaseService):
+class EC2Instance(PricingMixin, PaginatedBaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_instances
     """
@@ -65,3 +66,16 @@ class EC2Instance(PaginatedBaseService):
                 raise ValueError('Response was not unique')
 
         return self
+
+    @property
+    def _pricing_params(self) -> dict:
+        os = getattr(self, 'Platform', None)
+        return dict(service_code='AmazonEC2',
+                    filters=[
+                        {'Field': 'tenancy', 'Value': 'shared', 'Type': 'TERM_MATCH'},
+                        {'Field': 'operatingSystem', 'Value': os if os else 'Linux', 'Type': 'TERM_MATCH'},
+                        {'Field': 'preInstalledSw', 'Value': 'NA', 'Type': 'TERM_MATCH'},
+                        {'Field': 'instanceType', 'Value': self.type, 'Type': 'TERM_MATCH'},
+                        {'Field': 'location', 'Value': PRICING_REGION_MAP[self.region], 'Type': 'TERM_MATCH'},
+                        {'Field': 'capacitystatus', 'Value': 'Used', 'Type': 'TERM_MATCH'}
+                        ])
