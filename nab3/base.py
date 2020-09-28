@@ -40,6 +40,10 @@ class ClientHandler:
             setattr(self, service_name, service)
         return service
 
+    @property
+    def region(self):
+        return self._session.region_name
+
 
 class BaseAWS:
     _client: ClientHandler
@@ -71,6 +75,10 @@ class BaseAWS:
     @property
     def client(self):
         return self._client
+
+    @property
+    def region(self):
+        return self._client.region
 
     def _get_service_class(self, service_name):
         service_class = self._service_map[service_name]
