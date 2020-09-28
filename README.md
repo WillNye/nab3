@@ -30,7 +30,7 @@ from nab3 import AWS
 
 
 async def ecs_sg_example():
-    ecs_cluster = await aws.ecs_cluster.get(name='cluster-name', with_related=['asg__security_groups'])
+    ecs_cluster = await aws.ecs_cluster.get(name='cluster-name', with_related=['security_groups'])
     print([sg.name for sg in ecs_cluster.security_groups])
 
 
