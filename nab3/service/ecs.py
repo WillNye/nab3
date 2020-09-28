@@ -131,6 +131,18 @@ class ECSCluster(AutoScaleMixin, MetricMixin, SecurityGroupMixin, BaseService):
         self.create_service_field('services', 'ecs_service')
         super(self._get_service_class('ecs_cluster'), self).__init__(**kwargs)
 
+    async def get_on_demand_monthly(self, currency='usd'):
+        if not self.asg.is_loaded():
+            await self.fetch('asg')
+
+        return await self.asg.get_on_demand_monthly(currency)
+
+    async def get_on_demand_hourly(self, currency='usd'):
+        if not self.asg.is_loaded():
+            await self.fetch('asg')
+
+        return await self.asg.get_on_demand_hourly(currency)
+
     async def load_asg(self):
         """Retrieves the instances asg.
 
