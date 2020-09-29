@@ -2,7 +2,7 @@ import base64
 import logging
 
 from nab3.mixin import AutoScaleMixin, MetricMixin, PricingMixin, SecurityGroupMixin
-from nab3.base import PaginatedBaseService
+from nab3.base import PaginatedBaseService, ServiceWrapper
 from nab3.utils import PRICING_REGION_MAP
 
 LOGGER = logging.getLogger('nab3')
@@ -145,19 +145,6 @@ class ASG(AutoScaleMixin, MetricMixin, PricingMixin, SecurityGroupMixin, Paginat
         per_instance = self.pricing.get_on_demand_hourly(currency)
         return per_instance * len(self.instances)
 
-    async def load_pricing(self):
-        if self.pricing.is_loaded():
-            return self.pricing
-
-        if not self.instances.is_loaded():
-            await self.fetch('instances')
-
-        pricing = await self.pricing.list(**self._pricing_params)
-        if len(pricing) > 0:
-            self.pricing = pricing[0]
-
-        return self.pricing
-
     async def load_security_groups(self):
         """Retrieves the instances related security groups.
 
@@ -185,6 +172,7 @@ class ASG(AutoScaleMixin, MetricMixin, PricingMixin, SecurityGroupMixin, Paginat
         :param with_related: list of related AWS resources to return
         :return:
         """
+        resp = ServiceWrapper(cls)
         if instance_id:
             client = cls._client.get(cls.boto3_client_name)
             response = client.describe_auto_scaling_instances(
@@ -200,7 +188,9 @@ class ASG(AutoScaleMixin, MetricMixin, PricingMixin, SecurityGroupMixin, Paginat
         await obj.load()
         if with_related:
             await obj.fetch(*with_related)
-        return obj
+
+        resp.service = obj
+        return resp
 
     @property
     def _stat_dimensions(self) -> list:
@@ -212,7 +202,7 @@ class ASG(AutoScaleMixin, MetricMixin, PricingMixin, SecurityGroupMixin, Paginat
 
     @property
     def _pricing_params(self) -> dict:
-        if self.instances.is_loaded():
+        if len(self.instances) > 0:
             instance = self.instances[0]
             os = getattr(instance, 'Platform', None)
             return dict(service_code='AmazonEC2',
@@ -224,5 +214,5 @@ class ASG(AutoScaleMixin, MetricMixin, PricingMixin, SecurityGroupMixin, Paginat
                             {'Field': 'location', 'Value': PRICING_REGION_MAP[self.region], 'Type': 'TERM_MATCH'},
                             {'Field': 'capacitystatus', 'Value': 'Used', 'Type': 'TERM_MATCH'}
                         ])
-        return {}
-
+        else:
+            return dict()
