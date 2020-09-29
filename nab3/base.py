@@ -271,7 +271,7 @@ class Filter:
                         if cur_key in service_obj.__dict__:
                             nested_obj = getattr(service_obj, cur_key, None)
                         else:
-                            nested_obj = await getattr(service_obj, cur_key, None)
+                            nested_obj = await getattr(service_obj, cur_key)
                         response, is_match = await self._match(nested_obj, safe_params, filter_value)
                         if is_match:
                             setattr(service_obj, cur_key, response)

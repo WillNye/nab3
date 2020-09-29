@@ -69,7 +69,7 @@ class PricingMixin:
 
     async def load_pricing(self):
         if self.pricing.is_loaded():
-            return self.pricing.get_region(self.client.region)
+            return self.pricing
 
         pricing = await self.pricing.list(**self._pricing_params)
         if len(pricing) > 0:
