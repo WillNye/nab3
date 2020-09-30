@@ -45,7 +45,7 @@ asyncio.run(ecs_sg_example())
 * Easy to use interface for inspecting an AWS response
 * Simple process to retrieve related attributes 
 * Creates intuitive relationships that aren't supported in boto3
-* Services contain methods to retrieve retrieve metrics 
+* Services contain methods to retrieve metrics 
 * Consistent case convention and methods to access 
 * Manages client connections
 * Comprehensive filter operations on an AWS response

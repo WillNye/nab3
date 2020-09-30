@@ -2,7 +2,7 @@ from setuptools import find_namespace_packages, setup
 
 setup(
     name='nab3',
-    version='0.1.1',
+    version='0.1.2',
     description='Easily inspect AWS resources',
     long_description='Easily inspect AWS resources',
     url='https://github.com/WillNye/nab3',
