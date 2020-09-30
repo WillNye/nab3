@@ -2,6 +2,18 @@
 
 ---
 
+# 0.1.2 (2020/09/30)
+
+### Bug Fixes
+* No longer fetching instances when calling ASG.fetch('pricing')
+* Fix bad response from the Pricing.load_pricing when pricing is already loaded
+* Remove default None in getattr within Filter._match
+
+### Features
+* None
+
+---
+
 # 0.1.1 (2020/09/28)
 
 ### Bug Fixes
