@@ -134,12 +134,12 @@ class ServiceWrapper:
                 await self.service.load()
         return self.service
 
-    async def fetch(self, *args):
+    async def fetch(self, *args, **kwargs):
         if self.service:
             if self._is_list():
-                await asyncio.gather(*[svc.fetch(*args) for svc in self.service])
+                await asyncio.gather(*[svc.fetch(*args, **kwargs) for svc in self.service])
             else:
-                await self.service.fetch(*args)
+                await self.service.fetch(*args, **kwargs)
         return self.service
 
     def copy(self):
@@ -567,13 +567,14 @@ class BaseService(BaseAWS):
 
         :return:
         """
-        if not self.loaded:
+        force = kwargs.pop('force', False)
+        if force or not self.loaded:
             self._loaded = True
             return await self._load(**kwargs)
         else:
             return self
 
-    async def fetch(self, *args):
+    async def fetch(self, *args, **kwargs):
         """Given the name of an instance attribute, retrieves that related attribute from AWS
 
         The value of the attribute will be updated accordingly and the Service object will be returned.
@@ -599,6 +600,7 @@ class BaseService(BaseAWS):
         f = Filter(name__icontains_any=['prod-', 'production'])
         prod_clusters = await f.run(ecs_cluster)
 
+        :param force: bool default False. If true, the service(s) will be re-pulled from AWS
         :param args:
         :return: Service
         """
@@ -609,14 +611,14 @@ class BaseService(BaseAWS):
                 # This is expected not all AWS resources have every property defined
                 #   e.g. An ASG may not have an EC2 instance if desired = 0 and min = 0
                 return svc_obj
-            loaded_obj = await svc_obj.fetch(*svc_fetch_args)
+            loaded_obj = await svc_obj.fetch(*svc_fetch_args, **kwargs)
             setattr(self, svc_name, loaded_obj)
 
         async_loads = defaultdict(list)
         custom_load_methods = []
 
-        if not self.loaded:
-            await self.load()
+        if kwargs.get('force', False) or not self.loaded:
+            await self.load(**kwargs)
 
         for arg in args:
             arg_split = arg.split('__')
