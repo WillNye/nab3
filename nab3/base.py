@@ -479,6 +479,7 @@ class BaseService(BaseAWS):
                 orig_key = str(obj_key)
                 if isinstance(obj_val, list):
                     if all(isinstance(svc_instance, dict) for svc_instance in obj_val):
+                        obj_key = f'{svc_name}s'
                         obj_val = [new_class(**svc_instance) for svc_instance in obj_val]
                     else:
                         # Sketchy logic incoming
