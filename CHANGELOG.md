@@ -2,6 +2,16 @@
 
 ---
 
+# 0.1.3 (2020/10/06)
+
+### Bug Fixes
+* Standardizing response on a list of dicts that hit on a service
+
+### Features
+* Optional force argument to manually reload an object and related attrs e.g. `asg_resp.fetch('security_groups', force=True)`
+
+---
+
 # 0.1.2 (2020/09/30)
 
 ### Bug Fixes
