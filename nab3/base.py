@@ -126,11 +126,11 @@ class ServiceWrapper:
         else:
             return self.service.loaded
 
-    async def load(self):
+    async def load(self, force: bool = False):
         if self.service:
             if self._is_list() and not self.is_loaded():
                 self.service = await self.service_class.list(service_list=self.service)
-            elif not self.is_loaded():
+            elif not self.is_loaded() or force:
                 await self.service.load()
         return self.service
 
