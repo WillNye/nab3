@@ -2,7 +2,7 @@
 
 ---
 
-# 0.1.3 (2020/10/06)
+# 0.1.4 (2020/10/06)
 
 ### Bug Fixes
 * Standardizing response on a list of dicts that hit on a service
