@@ -68,6 +68,7 @@ class BaseAWS:
         ecs_task='ECSTask',
         elasticache_cluster='ElasticacheCluster',
         elasticache_node='ElasticacheNode',
+        image='Image',
         instance='EC2Instance',
         kafka_cluster='KafkaCluster',
         kafka_broker='KafkaBroker',

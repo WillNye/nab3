@@ -3,7 +3,7 @@ from itertools import chain
 
 from nab3.mixin import MetricMixin, PricingMixin
 from nab3.base import PaginatedBaseService
-from nab3.utils import paginated_search, PRICING_REGION_MAP, snake_to_camelcap
+from nab3.utils import camel_to_snake, paginated_search, PRICING_REGION_MAP, snake_to_camelcap
 
 LOGGER = logging.getLogger('nab3')
 LOGGER.setLevel(logging.WARNING)
@@ -79,3 +79,41 @@ class EC2Instance(PricingMixin, PaginatedBaseService):
                         {'Field': 'location', 'Value': PRICING_REGION_MAP[self.region], 'Type': 'TERM_MATCH'},
                         {'Field': 'capacitystatus', 'Value': 'Used', 'Type': 'TERM_MATCH'}
                         ])
+
+
+class Image(PaginatedBaseService):
+    """
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_images
+    """
+    boto3_client_name = 'ec2'
+    key_prefix = 'Image'
+    _boto3_describe_def = dict(
+        client_call="describe_images",
+        call_params=dict(
+            id=dict(name='ImageIds', type=list),
+            executable_user=dict(name='ExecutableUsers', type=list),
+            filters=dict(name='Filters', type=list),  # list<dict(name=str, values=list<str>)>
+            owner=dict(name='Owners', type=list)
+        )
+    )
+    _to_boto3_case = snake_to_camelcap
+
+    @classmethod
+    async def _list(cls, **kwargs) -> list:
+        """Returns an instance for each object
+        :param kwargs:
+        :return: list<cls()>
+        """
+        kwargs = {cls._to_boto3_case(k): v for k, v in kwargs.items() if k not in ['list_kwargs', 'describe_kwargs']}
+        if not kwargs:
+            # If no params are provided only return private images
+            kwargs['Filters'] = [dict(Name='is-public', Values=['false'])]
+
+        response_key = cls._boto3_describe_def.get('response_key', f'{cls.key_prefix}s')
+        fnc_base = camel_to_snake(cls.key_prefix)
+        fnc_name = cls._boto3_describe_def.get('client_call', f'describe_{fnc_base}s')
+
+        client = cls._client.get(cls.boto3_client_name)
+        boto3_fnc = getattr(client, fnc_name)
+        response = paginated_search(boto3_fnc, kwargs, response_key)
+        return [cls(_loaded=True, **obj) for obj in response]
