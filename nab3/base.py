@@ -26,6 +26,7 @@ class ClientHandler:
                  default_config: botocore.client.Config = botocore.client.Config(max_pool_connections=10)):
         self._botocore_config = default_config
         self._session = session
+        self._account = None
 
     def get(self, service_name):
         """Retrieves the client resource object.
@@ -43,6 +44,15 @@ class ClientHandler:
     @property
     def region(self):
         return self._session.region_name
+
+    @property
+    def account(self):
+        if not self._account:
+            sts_client = self.get('sts')
+            response = sts_client.get_caller_identity()
+            self._account = response['Account']
+
+        return self._account
 
 
 class BaseAWS:
