@@ -2,6 +2,20 @@
 
 ---
 
+# 0.1.5 (2020/10/14)
+
+### Bug Fixes
+* ServiceWrapper.is_list now public instead of protected
+* Fixed Filter._match behavior on nested service lookups 
+* Iterating a list of Service objects now properly yielding with the ServiceWrapper 
+
+### Features
+* Created an account property within the ClientHandler to return the account id for the current session
+* Added the EC2 Image service
+
+
+---
+
 # 0.1.4 (2020/10/06)
 
 ### Bug Fixes
