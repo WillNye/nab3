@@ -126,20 +126,20 @@ class ServiceWrapper:
         if name:
             self.name = name
 
-    def _is_list(self) -> bool:
+    def is_list(self) -> bool:
         return isinstance(self.service, list)
 
     def is_loaded(self):
         if self.service is None:
             return False
-        elif self._is_list():
+        elif self.is_list():
             return all(svc.loaded for svc in self.service)
         else:
             return self.service.loaded
 
     async def load(self, force: bool = False):
         if self.service:
-            if self._is_list() and not self.is_loaded():
+            if self.is_list() and not self.is_loaded():
                 self.service = await self.service_class.list(service_list=self.service)
             elif not self.is_loaded() or force:
                 await self.service.load()
@@ -147,7 +147,7 @@ class ServiceWrapper:
 
     async def fetch(self, *args, **kwargs):
         if self.service:
-            if self._is_list():
+            if self.is_list():
                 await asyncio.gather(*[svc.fetch(*args, **kwargs) for svc in self.service])
             else:
                 await self.service.fetch(*args, **kwargs)
@@ -182,7 +182,7 @@ class ServiceWrapper:
         return getattr(self.service, value, None)
 
     def __getitem__(self, item):
-        if self._is_list():
+        if self.is_list():
             svc_wrapper = ServiceWrapper(service_class=self.service_class)
             svc_wrapper.service = self.service[item]
             return svc_wrapper
@@ -191,7 +191,10 @@ class ServiceWrapper:
 
     def __iter__(self):
         if isinstance(self.service, list):
-            yield from self.service
+            for service in self.service:
+                svc_wrapper = ServiceWrapper(service_class=self.service_class)
+                svc_wrapper.service = service
+                yield svc_wrapper
         elif self.service is None or not self.is_loaded():
             yield from []
         else:
@@ -260,7 +263,7 @@ class Filter:
         is_match = False
         safe_params = copy.deepcopy(param_as_list)  # Cause safety first
         if len(safe_params) > 1:
-            if isinstance(service_obj, list):
+            if isinstance(service_obj, list) or (isinstance(service_obj, ServiceWrapper) and service_obj.is_list()):
                 hits = await asyncio.gather(*[
                     self._match(e, safe_params, filter_value) for e in service_obj
                 ])
@@ -276,13 +279,10 @@ class Filter:
                     response, is_match = await self._match(obj_val, safe_params, filter_value)
                     if is_match:
                         service_obj[cur_key] = response
-                elif inspect.isclass(type(service_obj)):
+                elif isinstance(service_obj, ServiceWrapper):
                     try:
                         await service_obj.load()
-                        if cur_key in service_obj.__dict__:
-                            nested_obj = getattr(service_obj, cur_key, None)
-                        else:
-                            nested_obj = await getattr(service_obj, cur_key)
+                        nested_obj = getattr(service_obj, cur_key)
                         response, is_match = await self._match(nested_obj, safe_params, filter_value)
                         if is_match:
                             setattr(service_obj, cur_key, response)
