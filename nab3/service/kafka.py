@@ -56,14 +56,14 @@ class KafkaCluster(MetricMixin, BaseService):
         self.topics = list(topics)
         return self.topics
 
-    async def load_brokers(self):
+    async def load_brokers(self, force=False):
         """Retrieves the cluster's brokers.
 
         stored as the instance attribute `obj.brokers`
 
         :return: ServiceWrapper(KafkaBroker)
         """
-        if self.brokers.loaded:
+        if self.brokers.is_loaded() and not force:
             return self.brokers
 
         self.brokers = await self.brokers.list(cluster_arn=self.arn)

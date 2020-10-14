@@ -143,15 +143,15 @@ class ECSCluster(AutoScaleMixin, MetricMixin, SecurityGroupMixin, BaseService):
 
         return await self.asg.get_on_demand_hourly(currency)
 
-    async def load_asg(self):
+    async def load_asg(self, force=False):
         """Retrieves the instances asg.
 
         stored as the instance attribute `obj.asg`
 
-        if self.scaling_policies.loaded:
+        if self.scaling_policies.is_loaded():
             return self.scaling_policies
 
-        if not self.security_groups.loaded:
+        if not self.security_groups.is_loaded():
             await self.fetch('security_groups')
 
         filter_list = [sg.id for sg in self.security_groups]
@@ -167,10 +167,10 @@ class ECSCluster(AutoScaleMixin, MetricMixin, SecurityGroupMixin, BaseService):
 
         :return: ASG
         """
-        if self.asg.loaded:
+        if self.asg.is_loaded() and not force:
             return self.asg
-        if not self.instances.loaded:
-            await self.fetch('instances')
+
+        await self.fetch('instances', force=force)
 
         container_instances = [instance for instance in self.instances]
         if len(container_instances) > 0:
@@ -179,36 +179,37 @@ class ECSCluster(AutoScaleMixin, MetricMixin, SecurityGroupMixin, BaseService):
 
         return self.asg
 
-    async def load_instances(self):
+    async def load_instances(self, force=False):
         """Retrieves the cluster's instances.
 
         stored as the instance attribute `obj.instances`
 
         :return: list<instances>
         """
-        if self.instances.loaded:
+        if self.instances.is_loaded() and not force:
             return self.instances
         self.instances = await self.instances.list(cluster=self.name)
         return self.instances
 
-    async def load_security_groups(self):
-        if self.security_groups.loaded:
+    async def load_security_groups(self, force=False):
+        if self.security_groups.is_loaded() and not force:
             return self.security_groups
 
-        await self.fetch('asg__security_groups')
+        await self.fetch('asg__security_groups', force=force)
         self.security_groups = self.asg.security_groups
         return self.security_groups
 
-    async def load_services(self):
+    async def load_services(self, force=False):
         """Retrieves the cluster's services.
 
         stored as the instance attribute `obj.services`
 
         :return: list<services>
         """
-        if self.services.loaded:
+        if self.services.is_loaded() and not force:
             return self.services
 
+        print(self.services.service)
         services = []
         for service in await self.services.list(cluster=self.name):
             service.cluster = self.name
@@ -217,20 +218,20 @@ class ECSCluster(AutoScaleMixin, MetricMixin, SecurityGroupMixin, BaseService):
 
         return self.services
 
-    async def load_scaling_policies(self):
+    async def load_scaling_policies(self, force=False):
         """Retrieves the cluster's scaling policies.
 
         stored as the instance attribute `obj.scaling_policies`
 
         :return: list<scaling_policies>
         """
-        if self.scaling_policies.loaded:
+        if self.scaling_policies.is_loaded() and not force:
             return self.scaling_policies
-        if not self.asg.loaded:
-            await self.fetch('asg')
+
+        await self.fetch('asg', force=force)
 
         if self.asg:
-            await self.asg.fetch('scaling_policies')
+            await self.asg.fetch('scaling_policies', force=force)
             self.scaling_policies = self.asg.scaling_policies
         return self.scaling_policies
 

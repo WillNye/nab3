@@ -133,9 +133,9 @@ class ServiceWrapper:
         if self.service is None:
             return False
         elif self.is_list():
-            return all(svc.loaded for svc in self.service)
+            return all(svc._loaded for svc in self.service)
         else:
-            return self.service.loaded
+            return self.service._loaded
 
     async def load(self, force: bool = False):
         if self.service:
@@ -438,10 +438,6 @@ class BaseService(BaseAWS):
     def client(self):
         return self._client.get(self.boto3_client_name)
 
-    @property
-    def loaded(self):
-        return self._loaded
-
     def _recursive_normalizer(self, obj):
         """Recursively normalizes an object.
         This is really the core logic behind everything.
@@ -592,7 +588,7 @@ class BaseService(BaseAWS):
         :return:
         """
         force = kwargs.pop('force', False)
-        if force or not self.loaded:
+        if force or not self._loaded:
             self._loaded = True
             return await self._load(**kwargs)
         else:
@@ -642,7 +638,7 @@ class BaseService(BaseAWS):
         custom_load_methods = []
         force = kwargs.get('force', False)
 
-        if force or not self.loaded:
+        if force or not self._loaded:
             await self.load(**kwargs)
 
         for arg in args:
@@ -720,7 +716,7 @@ class BaseService(BaseAWS):
             if callable(getattr(self, k)) \
                     and not k.startswith('_') \
                     and not k.startswith('load_') \
-                    and (k != 'load' or not self.loaded) \
+                    and (k != 'load' or not self._loaded) \
                     and k not in ['create_service_field', 'filter', 'get', 'list']:
                 cluster_methods.append(k)
 
