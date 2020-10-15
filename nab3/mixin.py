@@ -17,8 +17,8 @@ class AppAutoScaleMixin:
     def resource_id(self):
         raise NotImplementedError
 
-    async def load_scaling_policies(self):
-        if self.scaling_policies.loaded:
+    async def load_scaling_policies(self, force=False):
+        if self.scaling_policies.is_loaded() and not force:
             return self.scaling_policies
 
         self.scaling_policies = await self.scaling_policies.list(service_namespace=self.boto3_client_name,
@@ -32,10 +32,13 @@ class AutoScaleMixin:
         self.create_service_field('scaling_policies', 'scaling_policy')
         super().__init__(**kwargs)
 
-    async def load_scaling_policies(self):
-        if not self.scaling_policies.loaded:
-            scaling_policies = await self.scaling_policies.list(asg_name=self.name)
-            self.scaling_policies = scaling_policies
+    async def load_scaling_policies(self, force=False):
+        if self.scaling_policies.is_loaded() and not force:
+            return self.scaling_policies
+
+        scaling_policies = await self.scaling_policies.list(asg_name=self.name)
+        self.scaling_policies = scaling_policies
+        return self.scaling_policies
 
 
 class SecurityGroupMixin:
@@ -44,11 +47,11 @@ class SecurityGroupMixin:
         self.create_service_field('security_groups', 'security_group')
         super().__init__(**kwargs)
 
-    async def load_accessible_resources(self):
-        if self.accessible_resources.loaded:
+    async def load_accessible_resources(self, force=False):
+        if self.accessible_resources.is_loaded() and not force:
             return self.accessible_resources
 
-        await self.fetch('security_groups')
+        await self.fetch('security_groups', force=force)
 
         filter_list = [sg.id for sg in self.security_groups]
         if not filter_list:
@@ -67,8 +70,8 @@ class PricingMixin:
         self.create_service_field('pricing', 'pricing')
         super().__init__(**kwargs)
 
-    async def load_pricing(self):
-        if self.pricing.is_loaded():
+    async def load_pricing(self, force=False):
+        if self.pricing.is_loaded() and not force:
             return self.pricing
 
         pricing = await self.pricing.list(**self._pricing_params)

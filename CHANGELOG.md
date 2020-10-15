@@ -1,4 +1,17 @@
 # Change Log
+---
+
+# 0.1.6 (2020/10/14)
+
+### Bug Fixes
+* Updated Service.load methods to include force param
+* Cleaned up Passing force to Service.load methods
+* Updated ServiceWrapper.__setattr__ to properly set service attributes
+* Fix issue when calling a ServiceWrapper.service.list if the service had already been loaded
+* Fix issue where ServiceWrapper wasn't passing the load param to the Service class
+
+### Features
+* None
 
 ---
 

@@ -145,24 +145,22 @@ class ASG(AutoScaleMixin, MetricMixin, PricingMixin, SecurityGroupMixin, Paginat
         per_instance = self.pricing.get_on_demand_hourly(currency)
         return per_instance * len(self.instances)
 
-    async def load_security_groups(self):
+    async def load_security_groups(self, force=False):
         """Retrieves the instances related security groups.
 
         stored as the instance attribute `obj.security_groups`
 
         :return: list<SecurityGroup>
         """
-        if self.security_groups.loaded:
+        if self.security_groups.is_loaded() and not force:
             return self.security_groups
 
         launch_config = getattr(self, 'launch_configuration', None)
         if launch_config is None:
             return self.security_groups
-        elif not launch_config.loaded:
-            await launch_config.load()
 
-        await launch_config.fetch('security_groups')
-        self.security_groups = launch_config.security_groups
+        await self.fetch('launch_configuration__security_groups', force=force)
+        self.security_groups = self.launch_configuration.security_groups
         return self.security_groups
 
     @classmethod

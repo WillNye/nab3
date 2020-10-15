@@ -124,7 +124,7 @@ class ServiceWrapper:
         self.service = None
 
         if name:
-            self.name = name
+            self.__dict__['name'] = name
 
     def is_list(self) -> bool:
         return isinstance(self.service, list)
@@ -133,16 +133,16 @@ class ServiceWrapper:
         if self.service is None:
             return False
         elif self.is_list():
-            return all(svc.loaded for svc in self.service)
+            return all(svc._loaded for svc in self.service)
         else:
-            return self.service.loaded
+            return self.service._loaded
 
     async def load(self, force: bool = False):
         if self.service:
             if self.is_list() and not self.is_loaded():
                 self.service = await self.service_class.list(service_list=self.service)
             elif not self.is_loaded() or force:
-                await self.service.load()
+                await self.service.load(force=force)
         return self.service
 
     async def fetch(self, *args, **kwargs):
@@ -159,11 +159,15 @@ class ServiceWrapper:
         return service_obj
 
     def __set_name__(self, owner, name):
-        self.name = name
+        self.__dict__['name'] = name
 
     def __set__(self, obj, value) -> None:
         if isinstance(value, ServiceWrapper):
             value = value.service
+
+        if isinstance(value, list):
+            value = [v.service if isinstance(v, ServiceWrapper) else v for v in value]
+
         if (isinstance(value, list) and all(isinstance(elem_val, self.service_class) for elem_val in value))\
                 or (not isinstance(value, list) and isinstance(value, self.service_class)):
             svc_wrapper = ServiceWrapper(service_class=self.service_class)
@@ -172,13 +176,22 @@ class ServiceWrapper:
         else:
             raise ValueError(f'{value} != (list<{self.service_class}> || {self.service_class})')
 
+    def __setattr__(self, key, value):
+        if key in ['service_class', 'service']:
+            self.__dict__[key] = value
+        elif not self.is_list():
+            self.__dict__['service'].__dict__[key] = value
+        else:
+            raise ValueError(f'Unable to set {key} on multiple Service objects')
+
     def __getattr__(self, value):
         if value is 'loaded':
             return self.is_loaded()
         elif value is 'load':
             return self.load
-        elif self.service is None:
+        elif self.service is None or value in ['list', 'get']:
             return getattr(self.service_class, value, None)
+
         return getattr(self.service, value, None)
 
     def __getitem__(self, item):
@@ -425,10 +438,6 @@ class BaseService(BaseAWS):
     def client(self):
         return self._client.get(self.boto3_client_name)
 
-    @property
-    def loaded(self):
-        return self._loaded
-
     def _recursive_normalizer(self, obj):
         """Recursively normalizes an object.
         This is really the core logic behind everything.
@@ -579,7 +588,7 @@ class BaseService(BaseAWS):
         :return:
         """
         force = kwargs.pop('force', False)
-        if force or not self.loaded:
+        if force or not self._loaded:
             self._loaded = True
             return await self._load(**kwargs)
         else:
@@ -627,8 +636,9 @@ class BaseService(BaseAWS):
 
         async_loads = defaultdict(list)
         custom_load_methods = []
+        force = kwargs.get('force', False)
 
-        if kwargs.get('force', False) or not self.loaded:
+        if force or not self._loaded:
             await self.load(**kwargs)
 
         for arg in args:
@@ -654,7 +664,7 @@ class BaseService(BaseAWS):
         #   These methods are not thread safe because, in following with this example:
         #       load_accessible_resources calls load_accessible_resources which calls load_config.load
         for custom_load_method in custom_load_methods:
-            await custom_load_method()
+            await custom_load_method(force=force)
 
         await asyncio.gather(*[_fetch(attr_svc, attr_svc_args) for attr_svc, attr_svc_args in async_loads.items()])
         return self
@@ -706,7 +716,7 @@ class BaseService(BaseAWS):
             if callable(getattr(self, k)) \
                     and not k.startswith('_') \
                     and not k.startswith('load_') \
-                    and (k != 'load' or not self.loaded) \
+                    and (k != 'load' or not self._loaded) \
                     and k not in ['create_service_field', 'filter', 'get', 'list']:
                 cluster_methods.append(k)
 
