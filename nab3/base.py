@@ -353,6 +353,18 @@ class Filter:
                     else:
                         return service_obj, all(bool(f_val.lower() == service_obj) for f_val in filter_value)
 
+                elif operation in ['startswith', 'startswith_any']:
+                    if operation == 'startswith':
+                        return service_obj, service_obj.startswith(filter_value)
+                    else:
+                        return service_obj, any(service_obj.startswith(f_val) for f_val in filter_value)
+
+                elif operation in ['endswith', 'endswith_any']:
+                    if operation == 'endswith':
+                        return service_obj, service_obj.endswith(filter_value)
+                    else:
+                        return service_obj, any(service_obj.endswith(f_val) for f_val in filter_value)
+
                 elif operation == 'lt':
                     return service_obj, bool(service_obj < filter_value)
                 elif operation == 'lte':
@@ -385,10 +397,10 @@ class Filter:
     @staticmethod
     def operations():
         base_operations = ['re', 'contains', 'icontains', 'exact', 'iexact']
-        all_operations = ['lt', 'lte', 'gt', 'gte'] + base_operations
+        all_operations = ['lt', 'lte', 'gt', 'gte', 'startswith', 'startswith_any', 'endswith', 'endswith_any']
         all_operations += [f'{base_op}_any' for base_op in base_operations]
         all_operations += [f'{base_op}_all' for base_op in base_operations]
-        return sorted(all_operations)
+        return sorted(all_operations + base_operations)
 
 
 class BaseService(BaseAWS):
