@@ -2,6 +2,13 @@
 
 ---
 
+# 0.2.0 (2020/12/01)
+
+## Notes
+* Created an `Exclude` class. It is the negation of the `Filter` class, providing a mechanism to remove objects based on given parameters.
+
+---
+
 # 0.1.7 (2020/11/19)
 
 ## Notes

@@ -1,6 +1,5 @@
 import asyncio
 import copy
-import inspect
 import logging
 import re
 import sys
@@ -280,25 +279,23 @@ class Filter:
                 hits = await asyncio.gather(*[
                     self._match(e, safe_params, filter_value) for e in service_obj
                 ])
-                if any(hit[1] for hit in hits):
-                    # If 1 gets in they all get in because this indicates the primary object is a match
-                    response, is_match = [hit[0] for hit in hits], True
-                else:
-                    response, is_match = [], False
+
+                service_obj = [hit[0] for hit in hits]
+                # If 1 gets in they all get in because this indicates the primary object is a match
+                is_match = any(hit[1] for hit in hits)
+
             elif service_obj:
                 cur_key = safe_params.pop(0)
                 if isinstance(service_obj, dict):
                     obj_val = service_obj.get(cur_key)
                     response, is_match = await self._match(obj_val, safe_params, filter_value)
-                    if is_match:
-                        service_obj[cur_key] = response
+                    service_obj[cur_key] = response
                 elif isinstance(service_obj, ServiceWrapper):
                     try:
                         await service_obj.load()
                         nested_obj = getattr(service_obj, cur_key)
                         response, is_match = await self._match(nested_obj, safe_params, filter_value)
-                        if is_match:
-                            setattr(service_obj, cur_key, response)
+                        setattr(service_obj, cur_key, response)
                     except AttributeError as ae:
                         LOGGER.warning(f'Await Service Object Error {ae} {service_obj} {cur_key} {safe_params}')
 
@@ -328,13 +325,13 @@ class Filter:
                         return service_obj, all(bool(f_val in service_obj) for f_val in filter_value)
 
                 elif operation in ['icontains', 'icontains_any', 'icontains_all']:
-                    service_obj = service_obj.lower()
+                    lower_obj = service_obj.lower()
                     if operation == 'icontains':
-                        return service_obj, bool(filter_value.lower() in service_obj)
+                        return service_obj, bool(filter_value.lower() in lower_obj)
                     elif operation == 'icontains_any':
-                        return service_obj, any(bool(f_val.lower() in service_obj) for f_val in filter_value)
+                        return service_obj, any(bool(f_val.lower() in lower_obj) for f_val in filter_value)
                     else:
-                        return service_obj, all(bool(f_val.lower() in service_obj) for f_val in filter_value)
+                        return service_obj, all(bool(f_val.lower() in lower_obj) for f_val in filter_value)
 
                 elif operation in ['exact', 'exact_any', 'exact_all']:
                     if operation == 'exact':
@@ -345,13 +342,13 @@ class Filter:
                         return service_obj, all(bool(f_val == service_obj) for f_val in filter_value)
 
                 elif operation in ['iexact', 'iexact_any', 'iexact_all']:
-                    service_obj = service_obj.lower()
+                    lower_obj = service_obj.lower()
                     if operation == 'iexact':
-                        return service_obj, bool(filter_value.lower() == service_obj)
+                        return service_obj, bool(filter_value.lower() == lower_obj)
                     elif operation == 'iexact_any':
-                        return service_obj, any(bool(f_val.lower() == service_obj) for f_val in filter_value)
+                        return service_obj, any(bool(f_val.lower() == lower_obj) for f_val in filter_value)
                     else:
-                        return service_obj, all(bool(f_val.lower() == service_obj) for f_val in filter_value)
+                        return service_obj, all(bool(f_val.lower() == lower_obj) for f_val in filter_value)
 
                 elif operation in ['startswith', 'startswith_any']:
                     if operation == 'startswith':
@@ -401,6 +398,24 @@ class Filter:
         all_operations += [f'{base_op}_any' for base_op in base_operations]
         all_operations += [f'{base_op}_all' for base_op in base_operations]
         return sorted(all_operations + base_operations)
+
+
+class Exclude(Filter):
+
+    async def run(self, service_obj):
+        """
+        :param service_obj:
+        :return:
+        """
+        service_obj = service_obj.copy()
+
+        for filter_param, filter_value in self.filter_params.items():
+            hits = await asyncio.gather(*[
+                self._match(so, filter_param.split('__'), filter_value) for so in service_obj
+            ])
+            service_obj.service = [hit[0] for hit in hits if not hit[1]]
+
+        return service_obj
 
 
 class BaseService(BaseAWS):

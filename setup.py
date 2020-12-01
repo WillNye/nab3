@@ -2,7 +2,7 @@ from setuptools import find_namespace_packages, setup
 
 setup(
     name='nab3',
-    version='0.1.7',
+    version='0.2.0',
     description='The async boto3 ORM',
     long_description='The async boto3 ORM. Easily search for and inspect an AWS service. '
                      'Service classes offer useful built in methods.'
