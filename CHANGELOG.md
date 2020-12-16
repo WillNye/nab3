@@ -2,6 +2,15 @@
 
 ---
 
+# 0.2.1 (2020/12/16)
+
+## Notes
+* TargetGroup Service has been added
+* BaseService.as_dict added to get the dict representation of the class if it has been loaded
+* Fixed response override on BaseService.load
+
+---
+
 # 0.2.0 (2020/12/01)
 
 ## Notes
