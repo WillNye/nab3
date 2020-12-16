@@ -184,9 +184,9 @@ class ServiceWrapper:
             raise ValueError(f'Unable to set {key} on multiple Service objects')
 
     def __getattr__(self, value):
-        if value is 'loaded':
+        if value == 'loaded':
             return self.is_loaded()
-        elif value is 'load':
+        elif value == 'load':
             return self.load
         elif self.service is None or value in ['list', 'get']:
             return getattr(self.service_class, value, None)
@@ -451,6 +451,7 @@ class BaseService(BaseAWS):
     _boto3_response_override = dict()
 
     def __init__(self, **kwargs):
+        self._as_dict = {} if not kwargs.get('_loaded') else {k: v for k, v in kwargs.items() if k != '_loaded'}
         self.client_id = getattr(self, 'client_id', self.key_prefix)
 
         for response_key, new_key in self._boto3_response_override.items():
@@ -562,6 +563,9 @@ class BaseService(BaseAWS):
         except AttributeError:
             AttributeError(obj_key, normalized_output[obj_key])
 
+    def as_dict(self):
+        return self._as_dict
+
     async def _load(self, **kwargs):
         fnc_base = camel_to_snake(self.key_prefix)
         describe_fnc = getattr(self.client, self._boto3_describe_def.get('client_call', f'describe_{fnc_base}s'))
@@ -588,7 +592,17 @@ class BaseService(BaseAWS):
         response = response[self._boto3_describe_def.get('response_key', f'{self.key_prefix}s')]
         if response:
             if len(response) == 1:
-                for k, v in response[0].items():
+                response = response[0]
+                self._loaded = True
+                self._as_dict = response
+
+                # Override response attrs if they hit on an override key
+                for response_key, new_key in self._boto3_response_override.items():
+                    val = response.pop(response_key, None)
+                    if val:
+                        response[new_key] = val
+
+                for k, v in response.items():
                     self._set_attr(k, v)
             else:
                 raise ValueError('Response was not unique')
