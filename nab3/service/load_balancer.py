@@ -7,6 +7,21 @@ LOGGER = logging.getLogger('nab3')
 LOGGER.setLevel(logging.WARNING)
 
 
+class TargetGroup(PaginatedBaseService):
+    """
+    boto3.amazonaws.com/v1/documentation/api/latest/reference/services/elbv2.html#ElasticLoadBalancingv2.Client.describe_target_groups
+    """
+    boto3_client_name = 'elbv2'
+    key_prefix = 'TargetGroup'
+    _boto3_describe_def = dict(
+        call_params=dict(
+            load_balancer=dict(name='LoadBalancerArn', type=str),
+            arn=dict(name='TargetGroupArns', type=list),  # list<str>,
+            name=dict(name='Names', type=list),  # list<str>
+        )
+    )
+
+
 class LoadBalancer(MetricMixin, SecurityGroupMixin, PaginatedBaseService):
     """
     boto3.amazonaws.com/v1/documentation/api/latest/reference/services/elbv2.html#ElasticLoadBalancingv2.Client.describe_load_balancers
@@ -19,6 +34,7 @@ class LoadBalancer(MetricMixin, SecurityGroupMixin, PaginatedBaseService):
             name=dict(name='Names', type=list),  # list<str>
         )
     )
+    _boto3_response_override = dict(DNSName='dns_name')
 
     @property
     def _stat_dimensions(self) -> list:
@@ -43,6 +59,7 @@ class LoadBalancerClassic(MetricMixin, SecurityGroupMixin, PaginatedBaseService)
         ),
         response_key='LoadBalancerDescriptions'
     )
+    _boto3_response_override = dict(DNSName='dns_name')
 
     @property
     def _stat_dimensions(self) -> list:

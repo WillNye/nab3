@@ -80,6 +80,7 @@ class BaseAWS:
         rds_instance='RDSInstance',
         scaling_policy='AutoScalePolicy',
         security_group='SecurityGroup',
+        target_group='TargetGroup'
     )
 
     @property
