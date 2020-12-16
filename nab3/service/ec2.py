@@ -60,8 +60,18 @@ class EC2Instance(PricingMixin, PaginatedBaseService):
         response = response.get('Reservations', [])
         if response:
             if len(response) == 1:
-                for k, v in response[0].get('Instances', {})[0].items():
+                response = response[0].get('Instances', {})[0]
+                self._as_dict = response
+
+                # Override response attrs if they hit on an override key
+                for response_key, new_key in self._boto3_response_override.items():
+                    val = response.pop(response_key, None)
+                    if val:
+                        response[new_key] = val
+
+                for k, v in response.items():
                     self._set_attr(k, v)
+
             else:
                 raise ValueError('Response was not unique')
 
